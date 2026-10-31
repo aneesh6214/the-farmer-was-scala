@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <Compile Include="../../src/Plugin/Editor/ScalaLexer.cs" Link="ScalaLexer.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaCompletionModel.cs" Link="ScalaCompletionModel.cs" />
+    <Compile Include="../../src/Plugin/Editor/AnalysisModels.cs" Link="AnalysisModels.cs" />
+    <Compile Include="../../src/Plugin/Editor/SemanticSpan.cs" Link="SemanticSpan.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaSyntaxHighlighter.cs" Link="ScalaSyntaxHighlighter.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaSymbolLocation.cs" Link="ScalaSymbolLocation.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaHoverFormatter.cs" Link="ScalaHoverFormatter.cs" />
+    <Compile Include="../../src/Plugin/Editor/SourceStore.cs" Link="SourceStore.cs" />
+    <Compile Include="../../src/Plugin/Editor/SourceMerge.cs" Link="SourceMerge.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Plugin/Editor/DiagnosticDelay.cs" Link="DiagnosticDelay.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaCatalogReference.cs" Link="ScalaCatalogReference.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaCompletionModel.cs" Link="ScalaCompletionModel.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaLexer.cs" Link="ScalaLexer.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaSymbolLocation.cs" Link="ScalaSymbolLocation.cs" />
+    <Compile Include="../../src/Plugin/Editor/AnalysisModels.cs" Link="AnalysisModels.cs" />
+    <Compile Include="../../src/Plugin/Editor/SemanticSpan.cs" Link="SemanticSpan.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaSyntaxHighlighter.cs" Link="ScalaSyntaxHighlighter.cs" />
+  </ItemGroup>
+</Project>

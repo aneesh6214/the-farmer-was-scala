@@ -1,0 +1,69 @@
+using System.Reflection;
+using UnityEngine;
+using UnityEngine.UI;
+
+int checks = 0;
+void Check(bool condition, string name) { if (!condition) throw new Exception(name); checks++; Console.WriteLine("PASS " + name); }
+const BindingFlags Hidden = BindingFlags.NonPublic | BindingFlags.Static;
+var assembly = typeof(FarmerScala.Plugin).Assembly;
+var panel = assembly.GetType("FarmerScala.ScalaOutputPanel", true)!;
+var attentionType = assembly.GetType("FarmerScala.OutputAttention", true)!;
+var severityType = assembly.GetType("FarmerScala.OutputSeverity", true)!;
+object attention = Activator.CreateInstance(attentionType, true)!;
+void Notify(string severity) => attentionType.GetMethod("Notify", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(attention, new[] { Enum.Parse(severityType, severity) });
+string Severity() => attentionType.GetProperty("Severity", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(attention)!.ToString()!;
+void Acknowledge() => attentionType.GetMethod("Acknowledge", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(attention, null);
+Acknowledge();
+Notify("Warning");
+Check(Severity() == "Warning", "warning notification is retained until read");
+Notify("Error");
+Notify("Warning");
+Check(Severity() == "Error", "later warnings cannot downgrade an unread error");
+Acknowledge();
+Check(Severity() == "None", "opening output acknowledges its notification");
+Parallel.For(0, 1000, i => Notify(i % 3 == 0 ? "Error" : "Warning"));
+Check(Severity() == "Error", "concurrent native log events preserve highest severity");
+Acknowledge();
+Check(Severity() == "None", "clearing previous-run attention permits new notifications");
+
+var native = ColorBlock.defaultColorBlock;
+native.normalColor = new Color(.35f, .42f, .03f, .8f);
+native.highlightedColor = new Color(.46f, .55f, .04f, .9f);
+native.pressedColor = new Color(.25f, .30f, .02f, .7f);
+native.selectedColor = native.highlightedColor;
+native.fadeDuration = .13f;
+native.colorMultiplier = 1.2f;
+Color accent = new Color(1f, .3f, 0f);
+var tinted = (ColorBlock)attentionType.GetMethod("Tint", Hidden)!.Invoke(null, new object[] { native, accent })!;
+foreach (var (before, after) in new[] { (native.normalColor, tinted.normalColor), (native.highlightedColor, tinted.highlightedColor), (native.pressedColor, tinted.pressedColor), (native.selectedColor, tinted.selectedColor) })
+{
+    Color.RGBToHSV(before, out _, out float s, out float v);
+    Color.RGBToHSV(after, out float h, out float nextS, out float nextV);
+    Color.RGBToHSV(accent, out float expectedHue, out _, out _);
+    Check(Math.Abs(s - nextS) < .00001f && Math.Abs(v - nextV) < .00001f && before.a == after.a && Math.Abs(h - expectedHue) < .00001f, "error hue preserves native saturation, darkness and opacity");
+}
+Check(tinted.fadeDuration == native.fadeDuration && tinted.colorMultiplier == native.colorMultiplier && tinted.disabledColor == native.disabledColor, "theme interaction timing and disabled color are preserved");
+Check((string)panel.GetField("Page", Hidden)!.GetRawConstantValue()! == "docs/output.md", "persistent panel uses native live-output document");
+Check(typeof(OutputText).GetProperty("Text") != null && typeof(Workspace).GetMethod("MoveCameraTo") != null, "live output and native window navigation contracts remain available");
+Check(typeof(Localizer).GetMethods(BindingFlags.Public | BindingFlags.Static).Count(m => m.Name == "LoadDoc") == 1, "output document patch has an unambiguous native target");
+Check(typeof(global::Logger).GetMethod("Clear") != null && typeof(global::Logger).GetMethod("LogError") != null && typeof(WarningIcon).GetMethod("PopUp") != null, "native clear, error and warning hooks match this game build");
+Check(assembly.GetType("FarmerScala.Runtime.RuntimeHost", true)!.GetMethods(BindingFlags.Public | BindingFlags.Instance).Count(m => m.Name == "Run") == 1, "per-Play reset patch has an unambiguous runtime entry point");
+Check(panel.GetNestedType("OutputHeading", BindingFlags.NonPublic) == null, "output leaves the game's original first line intact");
+var heading = panel.GetMethod("WithCompilationHeading", Hidden)!;
+string Document(string source) => (string)heading.Invoke(null, new object[] { source, "888888" })!;
+const string outputDoc = "For the full output see [output.txt](output.txt).\nTruncated Output:\n\n<output>";
+string withStatus = Document(outputDoc);
+Check(withStatus == "For the full output see [output.txt](output.txt).\n<color=#888888>Compiling...</color>\nTruncated Output:\n\n<output>", "gray compilation line precedes truncated output without removing the live section");
+Check(Document("Full output\r\nTruncated Output:\r\n<output>").Contains("</color>\nTruncated Output:\r\n<output>", StringComparison.Ordinal), "compilation heading preserves CRLF document body");
+Check(Document("Full output") == "Full output\n<color=#888888>Compiling...</color>\n", "single-line localized document keeps its full-output link");
+using var terminalStream = assembly.GetManifestResourceStream("FarmerScala.Terminal.png")!;
+using var terminalBytes = new MemoryStream();
+terminalStream.CopyTo(terminalBytes);
+var terminal = IconAsset.Read(terminalBytes.ToArray());
+Check(terminal.Width == 128 && terminal.Height == 128, "supplied terminal vector uses a square high-resolution canvas");
+Check(Enumerable.Range(0, 128).All(i => terminal.Alpha(i, 0) == 0 && terminal.Alpha(i, 127) == 0 && terminal.Alpha(0, i) == 0 && terminal.Alpha(127, i) == 0), "terminal glyph has transparent margins and no enclosing frame");
+Check(terminal.Alpha(60, 64) > 200 && terminal.Alpha(80, 106) == 255 && terminal.Alpha(80, 22) == 0, "supplied chevron and underline retain upright SVG orientation");
+Check(Enumerable.Range(0, 128 * 128).Count(i => terminal.Pixels[i * 4 + 3] == 255) > 1500, "supplied SVG provides a substantially thicker terminal glyph");
+Check(Enumerable.Range(0, 128 * 128).Any(i => terminal.Pixels[i * 4 + 3] > 0 && terminal.Pixels[i * 4 + 3] < 255), "terminal diagonals retain antialiased edge transparency");
+Check(Enumerable.Range(0, 128 * 128).All(i => terminal.Pixels[i * 4] == 255 && terminal.Pixels[i * 4 + 1] == 255 && terminal.Pixels[i * 4 + 2] == 255), "monochrome white RGB prevents dark sampling fringes and supports native theme tint");
+Console.WriteLine($"Output panel checks passed: {checks}; production notification state, native theme math and API contracts, without live Unity hooks/rendering.");

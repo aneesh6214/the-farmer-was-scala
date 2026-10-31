@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Farmer Scala compiler compile request",
+  "type": "object",
+  "required": ["id", "op", "project", "entry", "output"],
+  "properties": {
+    "id": {},
+    "op": {"const": "compile"},
+    "project": {"type": "string", "description": "Absolute directory containing raw flat .scala source windows."},
+    "entry": {"type": "string", "pattern": "^[^/\\\\]+\\.scala$"},
+    "output": {"type": "string", "description": "Absolute private generated-build directory; keep stable across edits to reuse the compiler JVM."}
+  },
+  "additionalProperties": false,
+  "$comment": "UTF-8 newline-delimited JSON on stdin/stdout. Successful replies include id,ok:true,artifact,sourceMap,hash,diagnostics:[],elapsedMs,cached. Failed replies have ok:false,artifact:null and diagnostics with file,line,column,endLine,endColumn,message (editor positions are one-based). Child sbt output is private; it never shares the protocol stream. The parent owns service cancellation/process lifetime."
+}

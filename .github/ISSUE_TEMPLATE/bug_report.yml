@@ -1,0 +1,55 @@
+name: Bug report
+description: Report an installation, editor, or gameplay problem.
+title: "[Bug] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mod version or commit
+      placeholder: "For example: 0.1.0 or a source commit hash"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Game and Windows versions
+      description: Include the game version or Steam build ID if you know it.
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - Setup EXE
+        - Release ZIP
+        - Source install.ps1
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest Scala example if the problem involves code. Screenshots can be attached here.
+      placeholder: |
+        1. Load a Scala 3 save.
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste the relevant error from BepInEx/LogOutput.log, the source install log, or the setup log.
+      render: text
+  - type: textarea
+    id: other-mods
+    attributes:
+      label: Other installed mods
+      description: List any other BepInEx plugins, if applicable.

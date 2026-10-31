@@ -1,0 +1,28 @@
+Scala menu icon
+==============
+Source: https://www.scala-lang.org/resources/img/frontpage/scala-logo-solo-white.svg
+Retrieved: 2026-10-30
+scala-logo.svg is the original standalone symbol. scala-logo-toolbar.png is a
+128x128 antialiased white render of its front ribbons, with optical padding.
+Transparent edge coverage is preserved; the shaded back folds are omitted.
+The Scala name and symbol identify the programming language; this mod is an
+independent project and is not an official Scala release.
+
+Terminal icon
+=============
+terminal.svg was supplied by the user from Downloads/terminal.svg on 2026-10-30.
+Its source comment identifies SVG Repo (https://www.svgrepo.com/).
+terminal-toolbar.png preserves its geometry, rendered white for native theme tint.
+
+The checked-in toolbar PNGs were rendered from the local SVG paths at 4x
+resolution and downsampled with antialiasing. The mod loads
+the embedded PNGs with bilinear sampling, native material/tint, square bounds and
+an upright transform. No SVG renderer or external asset file is needed at runtime.
+
+Demo video and preview
+======================
+Recorded and supplied by Aneesh Kumar on 2026-10-30 as the-farmer-was-scala.mp4.
+The bundled MP4 is an H.264/AAC conversion at 1280x720, 30 fps, preserving the
+full recording duration and its primary audio track. The JPG is a still frame
+from that video. Both are used by the mod's offline news page. The README
+uses a separately uploaded GitHub video attachment.

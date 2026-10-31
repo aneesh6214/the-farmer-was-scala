@@ -1,0 +1,10 @@
+name: Feature request
+description: Suggest an improvement to the Scala mod.
+title: "[Feature] "
+body:
+  - type: textarea
+    id: suggested_feature
+    attributes:
+      label: Suggested Feature
+    validations:
+      required: true

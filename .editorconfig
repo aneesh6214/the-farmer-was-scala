@@ -1,0 +1,22 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.cs]
+indent_size = 4
+csharp_new_line_before_open_brace = all
+csharp_preserve_single_line_blocks = false
+csharp_preserve_single_line_statements = false
+
+[*.{scala,sbt}]
+indent_size = 2
+
+[*.{csproj,json,xml}]
+indent_size = 2
+
+[*.ps1]
+indent_size = 4

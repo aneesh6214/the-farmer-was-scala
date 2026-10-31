@@ -1,0 +1,20 @@
+[
+  {
+    "name": "scala-library-3.9.0-sources.jar",
+    "url": "https://repo.maven.apache.org/maven2/org/scala-lang/scala-library/3.9.0/scala-library-3.9.0-sources.jar",
+    "sha256": "6A1405C0B617E51F02A22FF63D6DF1E572AB49C158E2AA9BCCD0327D1A4EC1CC",
+    "bytes": 1289683
+  },
+  {
+    "name": "scala3-library_sjs1_3-3.9.0-sources.jar",
+    "url": "https://repo.maven.apache.org/maven2/org/scala-lang/scala3-library_sjs1_3/3.9.0/scala3-library_sjs1_3-3.9.0-sources.jar",
+    "sha256": "45D3475E16CD759E72DD6133A494AD18F797CB79E7930B51EE723D89248B1AF6",
+    "bytes": 255
+  },
+  {
+    "name": "scalajs-library_2.13-1.22.0-sources.jar",
+    "url": "https://repo.maven.apache.org/maven2/org/scala-js/scalajs-library_2.13/1.22.0/scalajs-library_2.13-1.22.0-sources.jar",
+    "sha256": "F07B6C1D43C47BDA7014AB406F32ABE7A8131BA5FEF69F08B2BB5C8F781C56A3",
+    "bytes": 133881
+  }
+]

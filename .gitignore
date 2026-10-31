@@ -1,0 +1,9 @@
+.local/
+/scripts/
+stage/
+**/bin/
+**/obj/
+**/target/
+**/out/
+*.user
+*.log

@@ -1,0 +1,54 @@
+{
+  "scala": "3.9.0",
+  "scalaJs": "1.22.0",
+  "sbt": {
+    "version": "1.11.7",
+    "url": "https://repo.maven.apache.org/maven2/org/scala-sbt/sbt-launch/1.11.7/sbt-launch-1.11.7.jar",
+    "sha256": "F92A2095AC75008764FE3B2B793FFE624C4FBEF5BFD9B0022E4BC2DAF668C651"
+  },
+  "java": {
+    "distribution": "Eclipse Temurin",
+    "version": "25.0.5+8",
+    "url": "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5%2B8/OpenJDK25U-jdk_x64_windows_hotspot_25.0.5_8.zip",
+    "sha256": "636BDC13DC649DDC7D5921C5C7D23CCA6E44FD19D662B45CC9C02135A6C96C42",
+    "sourceUrl": "https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.5%2B8/OpenJDK25U-jdk-sources_25.0.5_8.tar.gz",
+    "sourceSha256": "F331D870D998F9C144C361C220960F8AD2DE169DC1B1C4DC4145291C501C2341"
+  },
+  "dotnet": {
+    "version": "10.0.14",
+    "url": "https://builds.dotnet.microsoft.com/dotnet/Runtime/10.0.14/dotnet-runtime-10.0.14-win-x64.zip",
+    "sha512": "A176095F1DB69B42C81ACC60940744078D6BF2D2AC643E418342AA9C81889F4BD13E42F4621B131F9E77E4BC781AD46E375956219DF9A4F979031D2A5A8D93CD"
+  },
+  "jint": "4.17.0",
+  "dotnetSdk": {
+    "version": "10.0.403",
+    "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.403/dotnet-sdk-10.0.403-win-x64.zip",
+    "sha512": "7A114C318FA7F1D9822991B534B2814D0E78386CEDA816B371F5141ACEFE741D87CCB606EDE06CADAC8F9AC5070E32B708A67BBD1619FF5E5A7858A27874EF48"
+  },
+  "bepinex": {
+    "version": "5.4.23.6",
+    "url": "https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.6/BepInEx_win_x64_5.4.23.6.zip",
+    "sha256": "6C57A714A892EFB4E9E1FEF63D608A3391F30EC984031C465404E4EE381A0755",
+    "licenseUrl": "https://raw.githubusercontent.com/BepInEx/BepInEx/v5.4.23.6/LICENSE",
+    "licenseSha256": "E6E534EF6F4347B6449407EE046A3D09CB0174C6F688C996AD0BED94B74B3933"
+  },
+  "runtimeNotices": [
+    { "name": "Jint-LICENSE.txt", "url": "https://raw.githubusercontent.com/sebastienros/jint/f0e4cbb55467b6e168c9da6392e402e8b3e65c2f/LICENSE.txt", "sha256": "7FD0F56C1BC3AC00B50E44FC9B93EEEAEB6905B62A272EB310590B68D4A5C3FF" },
+    { "name": "Acornima-LICENSE.txt", "url": "https://raw.githubusercontent.com/adams85/acornima/401bd62d8aeb9f7cbe7b6147937a87e0c71747a8/LICENSE", "sha256": "4182D3E7CE42F69B01F35C6ED27D075D26794A3C2F0B0182AA475BE6CA565BAB" },
+    { "name": "Newtonsoft.Json-LICENSE.txt", "url": "https://raw.githubusercontent.com/JamesNK/Newtonsoft.Json/0a2e291c0d9c0c7675d445703e51750363a549ef/LICENSE.md", "sha256": "D7F83BBEA3264A8E23D7739E44D9DB1A4994B357274DF6F00876EB2E623827AD" }
+  ],
+  "loaderNotices": [
+    { "name": "HarmonyX-LICENSE.txt", "url": "https://raw.githubusercontent.com/BepInEx/HarmonyX/31d794f3affce55fa87c99efac7dae23a126cf52/LICENSE", "sha256": "7E54AB4766EF78637A05FB3454663A66DE6BB960DBD4C7088890ED76B0844F36" },
+    { "name": "MonoMod-LICENSE.txt", "url": "https://raw.githubusercontent.com/MonoMod/MonoMod/ede81f48924d58abf05359409fad740fe2b0dfb5/LICENSE", "sha256": "0B64833222E3C6A426AD29362D26334619FE02EAF2B89EA9C37805521896C920" },
+    { "name": "Cecil-LICENSE.txt", "url": "https://raw.githubusercontent.com/jbevain/cecil/98ec890d44643ad88d573e97be0e120435eda732/LICENSE.txt", "sha256": "13D58ECBED676511C0C4C4009BFF107025E50007FF5E7901DC562700EC62509E" },
+    { "name": "UnityDoorstop-LICENSE.txt", "url": "https://raw.githubusercontent.com/NeighTools/UnityDoorstop/1c3ece1f1e6c20f4aa74d5402baabf8a0098d282/LICENSE", "sha256": "20C17D8B8C48A600800DFD14F95D5CB9FF47066A9641DDEAB48DC54AEC96E331" }
+  ],
+  "doorstopSource": {
+    "url": "https://codeload.github.com/NeighTools/UnityDoorstop/zip/1c3ece1f1e6c20f4aa74d5402baabf8a0098d282",
+    "sha256": "50BA7C659284F3AEA765AC98B6283C6CD8B242A1886BA53F84A109FE108AA052"
+  },
+  "game": {
+    "steamAppId": "2060160",
+    "coreSha256": "B8AC8D22B614D9E48D3AFFA9A4DE9C77E799B824ED8F50DC2E494CC2DD9F9082"
+  }
+}

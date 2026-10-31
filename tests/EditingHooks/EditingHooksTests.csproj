@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup><ItemGroup>
+<Compile Include="../../src/Plugin/Editor/ScalaEditing.cs" Link="ScalaEditing.cs" />
+<Compile Include="../../src/Plugin/Editor/ScalaEditingSession.cs" Link="ScalaEditingSession.cs" />
+<Compile Include="../../src/Plugin/Editor/ScalaEditingContext.cs" Link="ScalaEditingContext.cs" />
+<Compile Include="../../src/Plugin/Editor/ScalaLexer.cs" Link="ScalaLexer.cs" />
+<Compile Include="../../src/Plugin/Editor/ScalaWhitespace.cs" Link="ScalaWhitespace.cs" />
+</ItemGroup></Project>
