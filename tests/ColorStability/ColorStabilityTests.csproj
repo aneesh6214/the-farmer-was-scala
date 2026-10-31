@@ -3,13 +3,17 @@
   <ItemGroup>
     <Compile Include="../../src/Plugin/Editor/ScalaEditingContext.cs" Link="ScalaEditingContext.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaAnalysis.cs" Link="ScalaAnalysis.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaIndentation.cs" Link="ScalaIndentation.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaSyntaxPalette.cs" Link="ScalaSyntaxPalette.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaLexer.cs" Link="ScalaLexer.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaCompletionModel.cs" Link="ScalaCompletionModel.cs" />
     <Compile Include="../../src/Plugin/Editor/AnalysisModels.cs" Link="AnalysisModels.cs" />
     <Compile Include="../../src/Plugin/Editor/SemanticSpan.cs" Link="SemanticSpan.cs" />
     <Compile Include="../../src/Plugin/Editor/SemanticSpanMerger.cs" Link="SemanticSpanMerger.cs" />
     <Compile Include="../../src/Plugin/Editor/SemanticColorSnapshot.cs" Link="SemanticColorSnapshot.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaNamedArguments.cs" Link="ScalaNamedArguments.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaSyntaxHighlighter.cs" Link="ScalaSyntaxHighlighter.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaSymbolLocation.cs" Link="ScalaSymbolLocation.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaCompletionUnlocks.cs" Link="ScalaCompletionUnlocks.cs" />
   </ItemGroup>
 </Project>

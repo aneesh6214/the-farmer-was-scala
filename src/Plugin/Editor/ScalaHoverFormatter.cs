@@ -9,7 +9,7 @@ namespace FarmerScala.Editor;
 internal static class ScalaHoverFormatter
 {
     private const string Font = "<font=\"FiraCode-Regular SDF\">";
-    public static string Format(string hoverText, ScalaSyntaxPalette palette, bool projectSymbol = true)
+    public static string Format(string hoverText, ScalaSyntaxPalette palette, bool projectSymbol = true, string? symbolKind = null)
     {
         if (string.IsNullOrWhiteSpace(hoverText))
             return "";
@@ -19,7 +19,7 @@ internal static class ScalaHoverFormatter
         string description = separator >= 0 ? text.Substring(separator + 2).Trim() : "";
         var declarations = new ScalaCompletionModel(new Dictionary<string, string> { ["signature"] = signature }).Spans("signature").ToList();
         string title = "Scala";
-        string titleKind = "function";
+        string titleKind = "functionDeclaration";
         int offset = 0;
         foreach (string line in signature.Split('\n'))
         {
@@ -27,6 +27,8 @@ internal static class ScalaHoverFormatter
             {
                 string name = line.Substring(start, length);
                 string kind = !projectSymbol && (ScalaSyntaxHighlighter.IsBuiltinName(name) || name == "print") ? "builtin" : declarationKind;
+                if (declarationKind == "value" && (symbolKind == "field" || symbolKind == "parameter" || symbolKind == "typeParameter"))
+                    kind = symbolKind;
                 declarations.Add(new SemanticSpan { Start = offset + start, Length = length, Kind = kind });
                 if (title == "Scala")
                 {
@@ -127,7 +129,7 @@ internal static class ScalaHoverFormatter
         while (end < line.Length && char.IsLetter(line[end]))
             end++;
         string kind = line.Substring(1, end - 1);
-        if (!new[] { "param", "tparam", "return", "throws", "exception", "note", "example", "see", "deprecated", "since" }.Contains(kind))
+        if (!new[] { "param", "tparam", "return", "throws", "exception", "note", "example", "see", "deprecated", "since", "group", "groupname", "groupdesc", "groupprio" }.Contains(kind))
             return false;
         string rest = line.Substring(end).TrimStart();
         tag.Kind = kind;
@@ -152,20 +154,30 @@ internal static class ScalaHoverFormatter
     private static string Prose(string text, ScalaSyntaxPalette palette)
     {
         var output = new StringBuilder();
+        var paragraph = new List<string>();
         var block = new List<string>();
-        bool code = false;
+        bool code = false, list = false;
+        void FlushParagraph()
+        {
+            if (paragraph.Count == 0)
+                return;
+            output.Append(Inline(string.Join(" ", paragraph), palette)).Append('\n');
+            paragraph.Clear();
+        }
         foreach (string line in text.Split('\n'))
         {
             string trimmed = line.Trim();
             bool boundary = trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed == "{{{" || trimmed == "}}}";
             if (boundary)
             {
+                FlushParagraph();
                 if (code)
                 {
                     output.Append(Font).Append(ScalaSyntaxHighlighter.Colorize(SafeText(string.Join("\n", block)), palette)).Append("</font>\n");
                     block.Clear();
                 }
                 code = !code;
+                list = false;
                 continue;
             }
             if (code)
@@ -173,8 +185,29 @@ internal static class ScalaHoverFormatter
                 block.Add(line);
                 continue;
             }
-            output.Append(Inline(line, palette)).Append('\n');
+            if (trimmed.Length == 0)
+            {
+                FlushParagraph();
+                if (output.Length > 0 && output[output.Length - 1] == '\n')
+                    output.Append('\n');
+                list = false;
+                continue;
+            }
+            bool listItem = trimmed.StartsWith("- ", StringComparison.Ordinal) || trimmed.StartsWith("* ", StringComparison.Ordinal) ||
+                System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^\d+[.)]\s");
+            if (listItem || trimmed.StartsWith("#", StringComparison.Ordinal) || list && line.Length > trimmed.Length)
+            {
+                FlushParagraph();
+                output.Append(Inline(line, palette)).Append('\n');
+                list = true;
+            }
+            else
+            {
+                list = false;
+                paragraph.Add(trimmed);
+            }
         }
+        FlushParagraph();
         if (block.Count > 0)
             output.Append(Font).Append(ScalaSyntaxHighlighter.Colorize(SafeText(string.Join("\n", block)), palette)).Append("</font>");
         return output.ToString().TrimEnd();
@@ -264,7 +297,7 @@ internal static class ScalaHoverFormatter
     private static bool Name(string line, out int start, out int length, out string kind)
     {
         start = length = 0;
-        kind = "function";
+        kind = "functionDeclaration";
         var tokens = ScalaLexer.Lex(line);
         for (int i = 0; i + 1 < tokens.Count; i++)
         {
@@ -276,7 +309,7 @@ internal static class ScalaHoverFormatter
                 return false;
             start = token.Start;
             length = token.Length;
-            kind = declaration == "def" ? "function" : declaration == "val" || declaration == "var" ? "value" : "class";
+            kind = declaration == "def" ? "functionDeclaration" : declaration == "type" ? "typeAlias" : declaration == "val" || declaration == "var" ? "value" : "class";
             return true;
         }
         return false;

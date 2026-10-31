@@ -3,14 +3,15 @@ package game
 /**
   * Cardinal directions used by movement and other directional actions.
   */
-enum Direction extends GameValue:
+enum Directions extends GameValue:
   case East, North, South, West
+  // Native bridge tag; the public Scala type is Directions.
   def family: String = "Direction"
 
   def name: String = toString
 
-object Direction:
-  given WireCodec[Direction] = GameValue.codec("Direction", valueOf)
+object Directions:
+  given WireCodec[Directions] = GameValue.codec("Direction", valueOf)
 
 /**
   * Plant and farm entity types used by planting, sensing and cost queries.

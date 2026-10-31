@@ -20,7 +20,7 @@ internal sealed class ScalaCompletionModel
     }
     private sealed class Symbol
     {
-        public string Name = "", Kind = "", File = "", Signature = "", Documentation = "", Type = "";
+        public string Name = "", Kind = "", ColorKind = "", File = "", Signature = "", Documentation = "", Type = "";
         public string? Namespace;
         public int Offset;
         public Scope? Body;
@@ -140,10 +140,11 @@ internal sealed class ScalaCompletionModel
             var symbol = new Symbol
             {
                 Name = Name(name),
+                ColorKind = word == "type" ? "typeAlias" : "",
                 Offset = name.Start,
                 File = file.Name,
                 Scope = scope,
-                Kind = type || word == "type" ? word == "object" ? "object" : "class" : word == "def" ? "function" : "value"
+                Kind = type || word == "type" ? word == "object" ? "object" : "class" : word == "def" ? "function" : scope.Owner?.Kind == "class" || scope.Owner?.Kind == "object" ? "field" : "value"
             };
             int signatureEnd = headerEnd < tokens.Count ? tokens[headerEnd].Start : file.Source.Length;
             symbol.Signature = file.Source.Substring(tokens[i].Start, Math.Max(0, signatureEnd - tokens[i].Start)).Trim().TrimEnd(':', '=', '{', ' ');
@@ -193,7 +194,7 @@ internal sealed class ScalaCompletionModel
             var parameter = new Symbol
             {
                 Name = Name(token),
-                Kind = "class",
+                Kind = "typeParameter",
                 File = file.Name,
                 Offset = token.Start,
                 Scope = owner.Body!,
@@ -291,7 +292,7 @@ internal sealed class ScalaCompletionModel
             var parameter = new Symbol
             {
                 Name = Name(tokens[i]),
-                Kind = "value",
+                Kind = field ? "field" : "parameter",
                 Type = Name(tokens[i + 2]),
                 File = file.Name,
                 Offset = tokens[i].Start,
@@ -490,6 +491,7 @@ internal sealed class ScalaCompletionModel
         {
             if (symbol.Offset >= 0)
                 result.Definition = new AnalysisDefinition { File = symbol.File, Offset = symbol.Offset };
+            result.SymbolKind = symbol.ColorKind.Length > 0 ? symbol.ColorKind : symbol.Kind;
             result.HoverText = symbol.Signature + (symbol.Documentation.Length == 0 ? "" : "\n\n" + symbol.Documentation);
         }
         else
@@ -508,7 +510,7 @@ internal sealed class ScalaCompletionModel
                 continue;
             var symbol = file.Declarations.TryGetValue(token.Start, out var declared) ? declared : Expression(file, i);
             if (symbol != null)
-                spans.Add(new SemanticSpan { Start = token.Start, Length = token.Length, Kind = symbol.Kind });
+                spans.Add(new SemanticSpan { Start = token.Start, Length = token.Length, Kind = symbol.ColorKind.Length > 0 ? symbol.ColorKind : file.Declarations.ContainsKey(token.Start) && symbol.Kind == "function" ? "functionDeclaration" : symbol.Kind });
         }
         return spans;
     }
@@ -540,7 +542,10 @@ internal sealed class ScalaCompletionModel
             foreach (var symbol in scope.Names)
                 names.Add(symbol.Name);
         foreach (string name in file.Imports.Keys)
-            names.Add(name);
+            // Unresolved SDK/library imports need compiler identity before they
+            // can be offered, or a locked game alias could leak through fallback.
+            if (Lookup(file, At(file, cursor), name) != null)
+                names.Add(name);
         foreach (string module in file.Wildcards)
             foreach (var symbol in Exports(module))
                 names.Add(symbol.Name);

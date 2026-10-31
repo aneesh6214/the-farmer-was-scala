@@ -298,9 +298,26 @@ try
             catch (Exception e) { fault = engine.Fault(e); }
             var snapshot = JsonNode.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(scalaArtifact)!, "sources.json")))!;
             int callLine = Array.FindIndex(((string)snapshot["sources"]!["main.scala"]!).Split('\n'), line => line.Contains("get_world_size()")) + 1;
+            var queuedLocation = sourceGame.Requests.Last()["location"];
+            Check((string?)queuedLocation?["file"] == "main.scala" && (int?)queuedLocation?["line"] == callLine && (int?)queuedLocation?["column"] > 1,
+                "Queued native action lacks its Scala call-site location: " + queuedLocation?.ToJsonString());
             Check((string?)fault?["file"] == "main.scala" && (int?)fault["line"] == callLine && (int?)fault["column"] > 1, "Actual Scala native-error stack did not map to get_world_size call: " + fault?.ToJsonString());
             sourceGame.Close();
         }
+        var helperGame = new MockGame(_ => new JsonObject { ["$mock-error"] = "nested native failure" });
+        using (var transport = new WorkerTransport("test-run", "0"))
+        {
+            var accept = helperGame.Accept();
+            transport.Connect(helperGame.Port, "private-token");
+            await accept;
+            var helperEngine = new ScalaEngine(transport, scalaArtifact, "nativeFault.scala");
+            try { helperEngine.Run(); } catch (Exception) { }
+            var queued = helperGame.Requests.Single()["location"];
+            Check((string?)queued?["file"] == "nativeFault.scala" && (int?)queued?["line"] == 2 && (int?)queued?["column"] > 1,
+                "nested helper native action lost its source file/line before host application: " + queued?.ToJsonString());
+            helperGame.Close();
+        }
+
         Console.WriteLine("Actual Scala.js SDK + isolated child replay passed.");
     }
 

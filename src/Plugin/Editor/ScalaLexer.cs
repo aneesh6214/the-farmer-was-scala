@@ -13,6 +13,8 @@ internal sealed class ScalaToken
     public int Start, Length, Line, Column;
     public int End => Start + Length;
     public ScalaTokenKind Kind;
+    // Retain literal style when interpolation splits a string across tokens.
+    public bool HasEscapes;
     public bool Identifier => Kind == ScalaTokenKind.Identifier || Kind == ScalaTokenKind.Operator;
 }
 
@@ -48,7 +50,7 @@ internal static class ScalaLexer
             if (char.IsWhiteSpace(c))
             {
                 at++;
-                column += c == '\t' ? 4 : 1;
+                column += c == '\t' ? ScalaIndentation.Size : 1;
                 continue;
             }
             ScalaTokenKind kind;
@@ -117,13 +119,13 @@ internal static class ScalaLexer
                             column = 0;
                         }
                         else if (source[i] != '\r')
-                            column += source[i] == '\t' ? 4 : 1;
+                            column += source[i] == '\t' ? ScalaIndentation.Size : 1;
                     continue;
                 }
                 else
                     kind = Keywords.Contains(source.Substring(start, at - start)) ? ScalaTokenKind.Keyword : ScalaTokenKind.Identifier;
             }
-            else if (char.IsDigit(c))
+            else if (char.IsDigit(c) || c == '.' && at + 1 < source.Length && char.IsDigit(source[at + 1]))
             {
                 at++;
                 while (at < source.Length)
@@ -159,7 +161,8 @@ internal static class ScalaLexer
                 Length = at - start,
                 Line = startLine,
                 Column = startColumn,
-                Kind = kind
+                Kind = kind,
+                HasEscapes = kind == ScalaTokenKind.String && !(c == '"' && start + 2 < source.Length && source[start + 1] == '"' && source[start + 2] == '"')
             });
             for (int i = start; i < at; i++)
             {
@@ -169,7 +172,7 @@ internal static class ScalaLexer
                     column = 0;
                 }
                 else if (source[i] != '\r')
-                    column += source[i] == '\t' ? 4 : 1;
+                    column += source[i] == '\t' ? ScalaIndentation.Size : 1;
             }
         }
         // Embedded expression tokens are initially relative to their substring.
@@ -187,7 +190,7 @@ internal static class ScalaLexer
                     column = 0;
                 }
                 else if (ch != '\r')
-                    column += ch == '\t' ? 4 : 1;
+                    column += ch == '\t' ? ScalaIndentation.Size : 1;
             }
             token.Line = line;
             token.Column = column;
@@ -199,10 +202,11 @@ internal static class ScalaLexer
     {
         bool triple = quote + 2 < source.Length && source[quote + 1] == '"' && source[quote + 2] == '"';
         int width = triple ? 3 : 1, at = quote + width, segment = start;
+        bool escapes = !triple && source.Substring(start, quote - start) != "raw";
         void Add(int from, int to, ScalaTokenKind kind)
         {
             if (to > from)
-                result.Add(new ScalaToken { Start = from, Length = to - from, Text = source.Substring(from, to - from), Kind = kind });
+                result.Add(new ScalaToken { Start = from, Length = to - from, Text = source.Substring(from, to - from), Kind = kind, HasEscapes = kind == ScalaTokenKind.String && escapes });
         }
         while (at < source.Length)
         {

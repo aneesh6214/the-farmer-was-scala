@@ -1,7 +1,7 @@
 using FarmerScala.Editor;
 int checks = 0;
 void Check(bool condition, string name) { if (!condition) throw new Exception(name); checks++; Console.WriteLine("PASS " + name); }
-var palette = new ScalaSyntaxPalette { Class = "T", Function = "F", Builtin = "B", Keyword = "K", String = "S", Number = "N" };
+var palette = new ScalaSyntaxPalette { Class = "T", FunctionDeclaration = "F", FunctionCall = "F", TypeParameter = "T", Builtin = "B", Keyword = "K", String = "S", Number = "N" };
 string Paint(CodeWindow window) => ScalaSyntaxHighlighter.Colorize(window.CodeInput.text, palette, semanticSpans: ScalaAnalysis.Spans(window));
 bool Blue(CodeWindow window) => Paint(window).Contains("<color=T>ForeignType</color>", StringComparison.Ordinal);
 var workspace = new Workspace();
@@ -102,11 +102,11 @@ string generic = "def applyTwice[A](value: A)(f: A => A): A = f(f(value))\nval A
 var genericModel = new ScalaCompletionModel(new Dictionary<string, string> { { "a", generic } });
 var genericSpans = genericModel.Spans("a");
 foreach (int at in Enumerable.Range(0, generic.IndexOf("\n", StringComparison.Ordinal)).Where(i => generic[i] == 'A'))
-    Check(genericSpans.Any(s => s.Start == at && s.Kind == "class"), "generic type parameter declaration/reference at " + at);
-Check(!genericSpans.Any(s => s.Start == generic.LastIndexOf('A') && s.Kind == "class"), "type parameter color does not leak outside method scope");
+    Check(genericSpans.Any(s => s.Start == at && s.Kind == "typeParameter"), "generic type parameter declaration/reference at " + at);
+Check(!genericSpans.Any(s => s.Start == generic.LastIndexOf('A') && s.Kind == "typeParameter"), "type parameter color does not leak outside method scope");
 string interpolation = "val value: Option[Int] = Some(3)\nval text = s\"value=$value; ${Some(3).map(x => x + 1)}; $$literal\"";
 string interpolatedColor = ScalaSyntaxHighlighter.Colorize(interpolation, palette);
-Check(interpolatedColor.Contains("<color=T>Some</color>", StringComparison.Ordinal) && interpolatedColor.Contains("<color=F>map</color>", StringComparison.Ordinal), "interpolated expression has normal type and function colors");
+Check(interpolatedColor.Contains("<color=T>Some</color>", StringComparison.Ordinal) && !interpolatedColor.Contains("<color=F>map</color>", StringComparison.Ordinal), "interpolated expression keeps type colors and neutral method calls");
 Check(interpolatedColor.Contains("<color=S>; $$literal\"</color>", StringComparison.Ordinal), "escaped dollar stays literal string text");
 var interpolationTokens = ScalaLexer.Lex(interpolation);
 Check(interpolationTokens.Any(t => t.Text == "value" && t.Start == interpolation.IndexOf("$value", StringComparison.Ordinal) + 1 && t.Identifier), "simple dollar interpolation exposes exact identifier range");
@@ -120,4 +120,12 @@ Check(!ScalaLexer.Lex("\"$value ${Some(1)}\"").Any(t => t.Identifier), "plain st
 Check(ScalaLexer.Lex("s\"${Some(1)").Any(t => t.Text == "Some"), "unfinished interpolation still highlights code");
 var interpolatedSnapshot = new SemanticColorSnapshot(interpolation, new[] { new SemanticSpan { Start = interpolation.IndexOf("Some(3).", StringComparison.Ordinal), Length = 4, Kind = "class" } });
 Check(interpolatedSnapshot.Rebase(interpolation + "\n").Spans.Count == 1, "semantic type colors inside interpolation persist while editing");
+var unavailableImport = new ScalaCompletionModel(new Dictionary<string, string> { ["draft"] = "import game.Entities.{Tree as FutureTree}\nFut" });
+Check(!unavailableImport.Complete("draft", 44).Contains("FutureTree"), "unresolved game import waits for compiler unlock identity instead of leaking through fallback");
+string operators = "true && false";
+var operatorSpan = new[] { new SemanticSpan { Start = 5, Length = 2, Kind = "function" } };
+Check(!ScalaSyntaxHighlighter.Colorize(operators, palette, semanticSpans: operatorSpan).Contains("<color=F>&&</color>", StringComparison.Ordinal), "ordinary symbolic operators retain foreground despite compiler method classification");
+ConventionChecks.Run(Check);
+NamedArgumentChecks.Run(Check);
+DarkPaletteChecks.Run(Check);
 Console.WriteLine($"Color stability checks passed: {checks}; production facade/lexer/renderer with delayed compiler adapter.");

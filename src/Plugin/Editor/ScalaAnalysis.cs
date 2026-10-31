@@ -37,6 +37,7 @@ internal static class ScalaAnalysis
     {
         Dispose();
         installRoot = root;
+        ScalaCompletionUnlocks.IsUnlocked = key => MainSim.Inst != null && MainSim.Inst.IsUnlocked(key);
         // Formatting needs only the bundled parser, not a successful project
         // build. The owned helper process still starts lazily on first request.
         if (File.Exists(Path.Combine(root, "tools", "analysis", "classpath.txt")))
@@ -132,6 +133,14 @@ internal static class ScalaAnalysis
                 Expires = DateTime.UtcNow.AddSeconds(20)
             });
     }
+    internal static List<string> NativeSuggestions(CodeWindow window, int cursor, List<string> names)
+    {
+        if (!Capture(window))
+            return ScalaCompletionUnlocks.Native(names);
+        var local = new HashSet<string>(model!.Complete(window.fileName, cursor), StringComparer.Ordinal);
+        var allowed = new HashSet<string>(ScalaCompletionUnlocks.Native(names), StringComparer.Ordinal);
+        return names.Where(n => local.Contains(n) || allowed.Contains(n)).ToList();
+    }
     public static void Complete(CodeWindow window, int offset, Action<List<string>> callback)
     {
         try
@@ -211,7 +220,7 @@ internal static class ScalaAnalysis
                 // Retained compiler classifications outrank the lightweight
                 // index for unchanged tokens, including uncolored values.
                 // Rebase discards edited identifiers and changed receivers.
-                return SemanticSpanMerger.Merge(value, previous.Spans);
+                return SemanticSpanMerger.Merge(value, previous.Spans, authoritative: false);
             return value;
         }
         catch (Exception error) { Report(error); return null; }

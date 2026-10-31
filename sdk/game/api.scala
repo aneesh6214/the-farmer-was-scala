@@ -24,16 +24,16 @@ private object Globals extends js.Object
   * Missing results use `Option`: `Some(value)` means a result exists; `None` means it does not.
   */
 object api:
-  export game.{WireCodec, Direction, Entities, Grounds, Items, Unlocks, Hats, Drone, SimulationGlobals}
+  export game.{WireCodec, Directions, Entities, Grounds, Items, Unlocks, Hats, Drone, SimulationGlobals}
   type Entity = Entities
   type Ground = Grounds
   type Item = Items
   type Unlock = Unlocks
   type Hat = Hats
-  val North: Direction = Direction.North
-  val East: Direction = Direction.East
-  val South: Direction = Direction.South
-  val West: Direction = Direction.West
+  val North: Directions = Directions.North
+  val East: Directions = Directions.East
+  val South: Directions = Directions.South
+  val West: Directions = Directions.West
 
   private def wire[A: WireCodec](value: A): js.Any = summon[WireCodec[A]].encode(value)
 
@@ -69,7 +69,7 @@ object api:
     * @note Costs 200 native ticks on success, otherwise 1.
     * @example swap(North)
     */
-  def swap(direction: Direction): Boolean = call[Boolean]("swap", wire(direction))
+  def swap(direction: Directions): Boolean = call[Boolean]("swap", wire(direction))
 
   /**
     * Pays the planting cost and plants an entity under the drone. Planting fails when
@@ -90,7 +90,7 @@ object api:
     * @note Costs 200 native ticks on success, otherwise 1.
     * @example move(North)
     */
-  def move(direction: Direction): Boolean = call[Boolean]("move", wire(direction))
+  def move(direction: Directions): Boolean = call[Boolean]("move", wire(direction))
 
   /**
     * Checks whether the drone can move to a neighboring tile.
@@ -100,7 +100,7 @@ object api:
     * @note Costs 1 native tick.
     * @example if (can_move(North)) move(North)
     */
-  def can_move(direction: Direction): Boolean = call[Boolean]("can_move", wire(direction))
+  def can_move(direction: Directions): Boolean = call[Boolean]("can_move", wire(direction))
 
   /**
     * Switches the ground under the drone between `Grounds.Soil` and `Grounds.Grassland`.
@@ -307,7 +307,7 @@ object api:
     * @note Costs 1 native tick. Pattern matching distinguishes numeric and coordinate results.
     * @example measure(Some(North)).foreach(value => quick_print(value))
     */
-  def measure(direction: Option[Direction] = None): Option[Double | (Int, Int)] =
+  def measure(direction: Option[Directions] = None): Option[Double | (Int, Int)] =
     val raw = js.JSON.parse(Action("measure", js.JSON.stringify(js.Array(direction.fold[js.Any](null)(_.wire)))))
     if raw == null then None
     else if js.typeOf(raw) == "number" then Some(raw.asInstanceOf[Double])

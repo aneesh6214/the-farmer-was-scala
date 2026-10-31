@@ -23,11 +23,11 @@ internal static class ScalaWhitespace
             bool literal = tokenIndex < literals.Length && literals[tokenIndex].Start <= at;
             if (source[at] == '\t' && !literal)
             {
-                output.Append("    ");
+                output.Append(ScalaIndentation.Spaces);
                 if (at < anchor)
-                    beforeAnchor += 3;
+                    beforeAnchor += ScalaIndentation.Size - 1;
                 if (at < focus)
-                    beforeFocus += 3;
+                    beforeFocus += ScalaIndentation.Size - 1;
             }
             else
                 output.Append(source[at]);

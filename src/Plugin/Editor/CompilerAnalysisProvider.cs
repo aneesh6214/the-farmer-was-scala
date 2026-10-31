@@ -111,6 +111,7 @@ internal sealed class CompilerAnalysisProvider : IScalaAnalysisProvider, IScalaE
         result.IsGameBuiltin = (bool?)value["isGameBuiltin"] == true;
         result.GameFunctionName = (string?)value["gameFunctionName"];
         result.HoverText = (string?)value["hover"]?["text"];
+        result.SymbolKind = (string?)value["symbolKind"];
         if (value["definition"] is JObject target)
             result.Definition = new AnalysisDefinition
             {
@@ -127,7 +128,10 @@ internal sealed class CompilerAnalysisProvider : IScalaAnalysisProvider, IScalaE
         result = new List<string>();
         if (!RequestResult(sources, file, "complete", offset, out var value))
             return false;
-        result = value["completions"]?.Values<string>().OfType<string>().ToList() ?? result;
+        var names = value["completions"]?.Values<string>().OfType<string>() ?? Enumerable.Empty<string>();
+        var identities = (value["gameCompletions"] as JObject)?.Properties().ToDictionary(p => p.Name, p => (string?)p.Value ?? "", StringComparer.Ordinal)
+            ?? new Dictionary<string, string>(StringComparer.Ordinal);
+        result = ScalaCompletionUnlocks.Filter(names, identities);
         return true;
     }
     public bool TrySpans(IReadOnlyDictionary<string, string> sources, string file, out IReadOnlyList<SemanticSpan> result)
@@ -280,6 +284,7 @@ internal sealed class CompilerAnalysisProvider : IScalaAnalysisProvider, IScalaE
                     ["op"] = request.Op,
                     ["file"] = request.File,
                     ["offset"] = request.Offset,
+                    ["indentSize"] = ScalaIndentation.Size,
                     ["sources"] = JObject.FromObject(request.Sources)
                 });
                 if (!stopping && request.Generation == Interlocked.Read(ref generation))

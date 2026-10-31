@@ -40,11 +40,11 @@ object Main:
         def parameters(): java.util.List[SymbolDocumentation] = java.util.Collections.emptyList()
         def typeParameters(): java.util.List[SymbolDocumentation] = java.util.Collections.emptyList()
       }}.map(Optional.of).getOrElse(Optional.empty())
-    def definition(symbol: String, uri: URI): java.util.List[Location] = definitions.getOrElse(symbol, Nil).asJava
+    def definition(symbol: String, uri: URI): java.util.List[Location] = definitions.getOrElse(symbolKey(symbol, uri), Nil).asJava
     def definitionSourceToplevels(symbol: String, uri: URI): java.util.List[String] = java.util.Collections.emptyList()
     def search(query: String, target: String, visitor: SymbolSearchVisitor): SymbolSearch.Result = SymbolSearch.Result.COMPLETE
     def searchMethods(query: String, target: String, visitor: SymbolSearchVisitor): SymbolSearch.Result = SymbolSearch.Result.COMPLETE
-  private val builtinNames = Set("harvest", "can_harvest", "swap", "plant", "move", "can_move", "till", "get_pos_x", "get_pos_y", "get_world_size", "get_entity_type", "get_ground_type", "get_time", "get_tick_count", "use_item", "get_water", "do_a_flip", "change_hat", "game_print", "quick_print", "num_items", "get_cost", "clear", "get_companion", "unlock", "num_unlocked", "measure", "random", "simulate", "set_execution_speed", "set_world_size", "spawn_drone", "num_drones", "max_drones", "wait_for", "has_finished", "pet_the_piggy", "tap", "Items", "Entities", "Grounds", "Hats", "Unlocks", "Direction", "North", "East", "South", "West")
+  private val builtinNames = Set("harvest", "can_harvest", "swap", "plant", "move", "can_move", "till", "get_pos_x", "get_pos_y", "get_world_size", "get_entity_type", "get_ground_type", "get_time", "get_tick_count", "use_item", "get_water", "do_a_flip", "change_hat", "game_print", "quick_print", "num_items", "get_cost", "clear", "get_companion", "unlock", "num_unlocked", "measure", "random", "simulate", "set_execution_speed", "set_world_size", "spawn_drone", "num_drones", "max_drones", "wait_for", "has_finished", "pet_the_piggy", "tap", "Items", "Entities", "Grounds", "Hats", "Unlocks", "Directions", "North", "East", "South", "West")
   private def string(obj: JsonObject, key: String, default: String = ""): String =
     if obj.has(key) && !obj.get(key).isJsonNull then obj.get(key).getAsString else default
   private def int(obj: JsonObject, key: String, default: Int = 0): Int =
@@ -148,11 +148,11 @@ object Main:
     if changed.nonEmpty || removed.nonEmpty then
       definitions = documents.toList.flatMap { case (uri, (_, document)) =>
         document.occurrences.filter(_.role == SymbolOccurrence.Role.DEFINITION).flatMap { occurrence =>
-          occurrence.range.map { range => occurrence.symbol -> new Location(uri.toString,
+          occurrence.range.map { range => symbolKey(occurrence.symbol, uri) -> new Location(uri.toString,
             new Range(new Position(range.startLine, range.startCharacter), new Position(range.endLine, range.endCharacter))) }
         }
       }.groupMap(_._1)(_._2)
-      documentation = documents.toList.flatMap { case (_, (text, document)) =>
+      documentation = documents.toList.flatMap { case (uri, (text, document)) =>
         document.occurrences.filter(_.role == SymbolOccurrence.Role.DEFINITION).flatMap { occurrence =>
           occurrence.range.flatMap { range =>
             val at = rawOffset(text, range.startLine, range.startCharacter)
@@ -160,7 +160,7 @@ object Main:
             val before = text.substring(0, lineStart).trim
             val open = before.lastIndexOf("/**")
             if !before.endsWith("*/") || open < 0 then None
-            else Some(occurrence.symbol -> before.substring(open + 3, before.length - 2).linesIterator.map(_.trim.stripPrefix("*").trim).mkString("\n").trim)
+            else Some(symbolKey(occurrence.symbol, uri) -> before.substring(open + 3, before.length - 2).linesIterator.map(_.trim.stripPrefix("*").trim).mkString("\n").trim)
           }
         }
       }.toMap
@@ -171,11 +171,61 @@ object Main:
     val offset = math.max(0, math.min(raw.length, int(request, "offset")))
     new Params(workspace.resolve(file + ".scala").toUri, wrapped(file, raw), prefix(file).length + math.max(0, offset - 1), true)
 
+  private def symbolKey(symbol: String, uri: URI): String =
+    if symbol.startsWith("local") then uri.toString + "\u0000" + symbol else symbol
+
+  private def symbolKindsFor(document: TextDocument): Map[String, String] =
+    def kinds(doc: TextDocument): List[(String, String)] =
+      val roots = doc.occurrences.filter(o => o.role == SymbolOccurrence.Role.DEFINITION && o.range.exists(_.startLine == 0))
+        .map(_.symbol).filter(s => s.startsWith("__farmer_player/") && s.endsWith(".")).toSet
+      def isScriptMember(symbol: String): Boolean = roots.exists { owner =>
+        symbol.startsWith(owner) && symbol.stripPrefix(owner).stripSuffix(".").matches("`[^`]+`|[^.#/]+")
+      }
+      def value(s: SymbolInformation): Boolean =
+        (s.properties & (SymbolInformation.Property.VAL.value | SymbolInformation.Property.VAR.value)) != 0
+      // Captured constructor parameters have synthetic getters too, but are
+      // parameter references unless the source actually declares a field.
+      val constructorRoles = doc.symbols.filter(s => s.kind == SymbolInformation.Kind.PARAMETER && s.symbol.contains("`<init>`"))
+        .flatMap { s =>
+          val owner = s.symbol.take(s.symbol.indexOf("`<init>`"))
+          val role = if value(s) then "field" else "parameter"
+          List(owner + s.displayName + "." -> role, owner + s.displayName + "()." -> role)
+        }.toMap
+      doc.symbols.map { s =>
+        val role = s.kind.toString match
+          case "TYPE_PARAMETER" => "typeParameter"
+          case "PARAMETER" => "parameter"
+          case "LOCAL" => "value"
+          case _ if value(s) || s.kind == SymbolInformation.Kind.FIELD =>
+            constructorRoles.getOrElse(s.symbol, if isScriptMember(s.symbol) then "value" else "field")
+          case "METHOD" | "MACRO" => "function"
+          case "PACKAGE" => "namespace"
+          case "TYPE" => "typeAlias"
+          case "CLASS" | "TRAIT" | "OBJECT" | "INTERFACE" | "CONSTRUCTOR" => "class"
+          case _ => "value"
+        s.symbol -> role
+      }.toList
+    documents.valuesIterator.flatMap(d => kinds(d._2)).filterNot(_._1.startsWith("local")).toMap ++ kinds(document)
+
+  private def semanticKind(tokenType: String, symbol: String, declared: Option[String], definition: Boolean): String =
+    val fallback = tokenType match
+      case "typeParameter" => "typeParameter"
+      case "class" | "enum" | "interface" | "type" => "class"
+      case "method" | "function" | "macro" => "function"
+      case "parameter" => "parameter"
+      case "variable" | "property" if !symbol.startsWith("local") && !symbol.startsWith("__farmer_player/") && symbol.endsWith(".") => "field"
+      case _ => "value"
+    val role = declared.getOrElse(fallback)
+    if isBuiltinSymbol(symbol) then "builtin"
+    else if symbol.endsWith("/") || symbol.endsWith("/package.") then "namespace"
+    else if tokenType == "enumMember" then "field"
+    else if role == "function" && definition then "functionDeclaration" else role
+
   private def isBuiltinSymbol(symbol: String): Boolean =
-    symbol.startsWith("game/api.") || symbol.startsWith("game/api/") || definitions.getOrElse(symbol, Nil).exists { l =>
+    !symbol.startsWith("local") && (symbol.startsWith("game/api.") || symbol.startsWith("game/api/") || definitions.getOrElse(symbol, Nil).exists { l =>
       try Paths.get(URI.create(l.getUri)).toAbsolutePath.normalize().startsWith(sdk)
       catch case _: Exception => false
-    }
+    })
   private def isBuiltin(definition: DefinitionResult): Boolean =
     isBuiltinSymbol(definition.symbol()) ||
       definition.locations().asScala.exists { l =>
@@ -235,14 +285,16 @@ object Main:
     // A bare enum name resolves to its companion (.) while Scaladoc belongs
     // to the enum type (#). Retain the explicit enum signature even without docs.
     val enumDoc = if enumSignature.nonEmpty then documentation.get(symbol.stripSuffix(".") + "#") else None
-    val doc = documentation.get(definition.symbol()).orElse(enumDoc).orElse(libraryDefinition.map(_.documentation)).filter(_.nonEmpty)
+    val doc = documentation.get(symbolKey(definition.symbol(), p.uri)).orElse(enumDoc).orElse(libraryDefinition.map(_.documentation)).filter(_.nonEmpty)
     val signature = enumSignature.orElse(libraryDefinition.map(_.signature).filter(_.nonEmpty)).getOrElse(signatureAndDoc.split("\n\n", 2).headOption.getOrElse(""))
     val text = doc.map(value => signature + "\n\n" + value).getOrElse(enumSignature.getOrElse(signatureAndDoc))
     val gameFunction = if builtin && definition.symbol().startsWith("game/api.") then
       val name = definition.symbol().stripPrefix("game/api.").takeWhile(c => c != '(' && c != '.')
       if name.matches("[A-Za-z_][A-Za-z_0-9]*") then name else null
     else null
-    obj("ok" -> true, "isGameBuiltin" -> builtin, "gameFunctionName" -> gameFunction, "definition" -> target.orNull, "hover" -> obj("text" -> text))
+    val resolvedKind = semanticKind(if symbol.contains('(') then "method" else "variable", symbol,
+      documents.get(p.uri).flatMap(d => symbolKindsFor(d._2).get(symbol)), false)
+    obj("ok" -> true, "symbolKind" -> resolvedKind, "isGameBuiltin" -> builtin, "gameFunctionName" -> gameFunction, "definition" -> target.orNull, "hover" -> obj("text" -> text))
 
   private def diagnostics(request: JsonObject): JsonObject =
     val values = currentSources.toList.sortBy(_._1).flatMap { case (name, raw) =>
@@ -270,7 +322,7 @@ object Main:
     if sources == null || sources.size > 128 || sources.entrySet().asScala.map(_.getValue.getAsString.length.toLong).sum > 1000000 then
       throw new IllegalArgumentException("Formatting source snapshot exceeds its limit.")
     val raw = Option(sources.get(name)).map(_.getAsString).getOrElse(throw new IllegalArgumentException("Unknown source module."))
-    ScriptFormatter.format(raw) match
+    ScriptFormatter.format(raw, int(request, "indentSize")) match
       case Right(source) => obj("ok" -> true, "source" -> source)
       case Left(error) => obj("ok" -> true, "error" -> error)
 
@@ -284,11 +336,34 @@ object Main:
       case Some(offset) => new Params(p.uri, wrapped(file, projection.text), prefix(file).length + offset, true)
       case None => new Params(p.uri, p.text, math.min(p.text.length, p.offset + 1), true)
     val result = await(compiler.complete(completionParams))
-    val names = result.getItems.asScala.map { item =>
+    def name(item: org.eclipse.lsp4j.CompletionItem): String =
       Option(item.getFilterText).filter(_.nonEmpty).getOrElse(item.getLabel.takeWhile(c => c != '(' && c != '[' && !c.isWhitespace))
-    }.filter(_.nonEmpty).distinct.sorted
-    val values = new JsonArray(); names.foreach(values.add)
-    obj("ok" -> true, "completions" -> values)
+    def gameKey(item: org.eclipse.lsp4j.CompletionItem): Option[String] =
+      val data = Option(item.getData).map(gson.toJsonTree(_)).filter(_.isJsonObject).map(_.getAsJsonObject)
+      val symbol = data.map(d => string(d, "symbol")).getOrElse("")
+      if !isBuiltinSymbol(symbol) then None
+      else
+        val parts = symbol.stripPrefix("game/").replace('#', '.').split("\\.").filter(_.nonEmpty)
+        val apiName = if parts.headOption.contains("api") then parts.drop(1).headOption.map(_.takeWhile(_ != '(')) else None
+        val family = parts.headOption.getOrElse("")
+        apiName.filter(builtinNames.contains).map(n => if n == "game_print" then "print" else if n == "Directions" then "move" else n.toLowerCase)
+          .orElse {
+            if Set("Directions", "Entities", "Grounds", "Items", "Hats", "Unlocks").contains(family) then
+              val member = parts.lift(1).map(_.takeWhile(_ != '(')).filter(_.nonEmpty)
+              // Only enum cases carry availability; universal enum methods stay available.
+              member.filter(n => n.head.isUpper).map(_.toLowerCase)
+                .orElse(if member.isEmpty then Some(if family == "Directions" then "move" else family.toLowerCase) else None)
+            else None
+          }
+    val grouped = result.getItems.asScala.filter(i => name(i).nonEmpty).groupBy(name)
+    val values = new JsonArray(); grouped.keys.toList.sorted.foreach(values.add)
+    val game = new JsonObject()
+    grouped.foreach { case (label, items) =>
+      val keys = items.map(gameKey)
+      // A same-named user/library alternative must remain available.
+      if keys.forall(_.nonEmpty) then game.addProperty(label, keys.flatten.head)
+    }
+    obj("ok" -> true, "completions" -> values, "gameCompletions" -> game)
 
   private def analyze(request: JsonObject): JsonObject =
     val p = params(request)
@@ -298,27 +373,19 @@ object Main:
       document.occurrences.flatMap(o => o.range.map(r => rawOffset(p.text, r.startLine, r.startCharacter) -> o.symbol))
     }
     val symbols = occurrences.toMap
-    val symbolKinds = documents.valuesIterator.flatMap(_._2.symbols.map { s =>
-      val value = (s.properties & (SymbolInformation.Property.VAL.value | SymbolInformation.Property.VAR.value)) != 0
-      s.symbol -> (if value then "FIELD" else s.kind.toString)
-    }).toMap
+    val declarationOffsets = documents.get(p.uri).toList.flatMap(_._2.occurrences.filter(_.role == SymbolOccurrence.Role.DEFINITION)
+      .flatMap(_.range.map(r => rawOffset(p.text, r.startLine, r.startCharacter)))).toSet
+    val symbolKinds = documents.get(p.uri).map(d => symbolKindsFor(d._2)).getOrElse(Map.empty[String, String])
     val nodes = await(compiler.semanticTokens(p)).asScala.iterator.flatMap { node =>
       val at = node.start() - start; val end = node.end() - start
       if at < 0 || end > raw.length || end <= at then None
       else
         val tokenType = SemanticTokens.TokenTypes.lift(node.tokenType()).getOrElse("")
-        var kind = if Set("class", "enum", "interface", "type", "typeParameter").contains(tokenType) then "class"
-          else if Set("method", "function", "macro").contains(tokenType) then "function" else "value"
-        symbols.get(node.start()).flatMap(symbolKinds.get).foreach { declared =>
-          if Set("METHOD", "MACRO").contains(declared) then kind = "function"
-          else if Set("CLASS", "TRAIT", "TYPE", "TYPE_PARAMETER", "OBJECT", "INTERFACE", "CONSTRUCTOR").contains(declared) then kind = "class"
-          else if Set("LOCAL", "FIELD", "PARAMETER").contains(declared) then kind = "value"
-        }
-        if symbols.get(node.start()).exists(isBuiltinSymbol) then kind = "builtin"
+        val semanticSymbol = symbols.getOrElse(node.start(), "")
+        val kind = semanticKind(tokenType, semanticSymbol, symbols.get(node.start()).flatMap(symbolKinds.get), declarationOffsets(node.start()))
         // PC can attach the result type's synthetic token to an unapplied
         // method's name. Do not paint `farmer.run` as its return type `Int`.
         // The exact-source local index retains obvious method reference colors.
-        val semanticSymbol = symbols.getOrElse(node.start(), "")
         val descriptor = semanticSymbol.stripSuffix("#").stripSuffix(".")
         val simple = descriptor.substring(descriptor.lastIndexWhere(c => c == '/' || c == '#' || c == '.') + 1).stripPrefix("`").stripSuffix("`")
         val unrelatedType = kind == "class" && semanticSymbol.nonEmpty && raw.substring(at, end).stripPrefix("`").stripSuffix("`") != simple
@@ -329,26 +396,26 @@ object Main:
     val documentationNodes = if projection.segments.isEmpty then Nil else
       val projected = new Params(p.uri, wrapped(string(request, "file"), projection.text), 0, true)
       val projectedDocument = TextDocument.parseFrom(await(compiler.semanticdbTextDocument(projected.uri, projected.text))).asInstanceOf[TextDocument]
+      val projectedKinds = symbolKindsFor(projectedDocument)
+      val projectedDeclarations = projectedDocument.occurrences.filter(_.role == SymbolOccurrence.Role.DEFINITION)
+        .flatMap(_.range.map(r => rawOffset(projected.text, r.startLine, r.startCharacter))).toSet
       val projectedSymbols = projectedDocument.occurrences.flatMap(o => o.range.map(r => rawOffset(projected.text, r.startLine, r.startCharacter) -> o.symbol)).toMap
       await(compiler.semanticTokens(projected)).asScala.toList.flatMap { node =>
         val begin = node.start() - start; val end = node.end() - start
         projection.original(begin, end).map { original =>
           val tokenType = SemanticTokens.TokenTypes.lift(node.tokenType()).getOrElse("")
-          var kind = if Set("class", "enum", "interface", "type", "typeParameter").contains(tokenType) then "class"
-            else if Set("method", "function", "macro").contains(tokenType) then "function" else "value"
-          projectedSymbols.get(node.start()).flatMap(symbolKinds.get).foreach { declared =>
-            if Set("METHOD", "MACRO").contains(declared) then kind = "function"
-            else if Set("CLASS", "TRAIT", "TYPE", "TYPE_PARAMETER", "OBJECT", "INTERFACE", "CONSTRUCTOR").contains(declared) then kind = "class"
-            else if Set("LOCAL", "FIELD", "PARAMETER").contains(declared) then kind = "value"
-          }
-          if projectedSymbols.get(node.start()).exists(isBuiltinSymbol) then kind = "builtin"
+          val symbol = projectedSymbols.getOrElse(node.start(), "")
+          val kind = semanticKind(tokenType, symbol, projectedSymbols.get(node.start()).flatMap(projectedKinds.get), projectedDeclarations(node.start()))
           obj("start" -> original, "length" -> (end - begin), "kind" -> kind)
         }
       }
     val unique = (nodes ++ documentationNodes).groupBy(n => n.get("start").getAsInt -> n.get("length").getAsInt).values.map { alternatives =>
       alternatives.maxBy(n => n.get("kind").getAsString match
-        case "builtin" => 4
-        case "class" => 3
+        case "builtin" => 7
+        case "functionDeclaration" => 6
+        case "class" | "typeParameter" | "typeAlias" => 5
+        case "field" => 4
+        case "parameter" => 3
         case "function" => 2
         case _ => 1)
     }.toList.sortBy(_.get("start").getAsInt)

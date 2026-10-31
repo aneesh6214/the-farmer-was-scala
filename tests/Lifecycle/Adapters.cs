@@ -105,7 +105,10 @@ namespace FarmerScala.Game
             _ => JValue.CreateNull()
         });
         public void CompleteDrone(int drone, JToken? result) => MainSim.Inst.Executing = false;
-        public string? PollFault() => null;
+        public static string? InjectedFault;
+        public static JObject? InjectedLocation;
+        public JObject? FaultLocation => InjectedLocation;
+        public string? PollFault() => InjectedFault;
         public void Cancel()
         {
         }

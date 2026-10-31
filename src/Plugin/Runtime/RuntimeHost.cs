@@ -15,6 +15,8 @@ using Newtonsoft.Json.Linq;
 
 namespace FarmerScala.Runtime;
 
+internal enum CompilationProgress { None, Compiling, Done, Failed, Cancelled }
+
 internal sealed class RuntimeHost : IDisposable
 {
     private readonly Plugin plugin;
@@ -25,6 +27,7 @@ internal sealed class RuntimeHost : IDisposable
     private PendingRun? pending;
     public bool IsRunning => active != null || pending != null;
     internal bool IsCompiling => pending != null;
+    internal CompilationProgress CompilationState { get; private set; }
     public RuntimeHost(Plugin plugin, string installRoot)
     {
         this.plugin = plugin;
@@ -47,6 +50,7 @@ internal sealed class RuntimeHost : IDisposable
         var project = EditorIntegration.CaptureProject(window);
         var request = new PendingRun(project, window, stepping, compiler.KeepRun(project.Directory));
         pending = request;
+        CompilationState = CompilationProgress.Compiling;
         compiler.Compile(project).ContinueWith(task => mainQueue.Enqueue(() =>
         {
             try
@@ -56,6 +60,7 @@ internal sealed class RuntimeHost : IDisposable
                 pending = null;
                 if (task.IsFaulted || task.IsCanceled)
                 {
+                    CompilationState = task.IsCanceled ? CompilationProgress.Cancelled : CompilationProgress.Failed;
                     string message = task.Exception?.GetBaseException().Message ?? "Scala compilation was cancelled.";
                     plugin.QueueOutput(message);
                     EditorIntegration.SetError(project.EntryFile, 1, 1, message);
@@ -64,6 +69,7 @@ internal sealed class RuntimeHost : IDisposable
                 JObject result = task.Result;
                 if ((bool?)result["ok"] != true)
                 {
+                    CompilationState = CompilationProgress.Failed;
                     var diagnostic = (result["diagnostics"] as JArray)?.OfType<JObject>().FirstOrDefault();
                     string message = (string?)diagnostic?["message"] ?? (string?)result["error"] ?? "Scala compilation failed.";
                     plugin.QueueOutput(message);
@@ -72,6 +78,7 @@ internal sealed class RuntimeHost : IDisposable
                         true, (int?)diagnostic?["endLine"], (int?)diagnostic?["endColumn"]);
                     return;
                 }
+                CompilationState = CompilationProgress.Done;
                 try
                 {
                     StartCompiled(request, (string?)result["artifact"] ?? throw new IOException("Missing Scala.js artifact."));
@@ -378,7 +385,9 @@ internal sealed class RuntimeHost : IDisposable
         string? fault = run.Session.PollFault();
         if (!string.IsNullOrEmpty(fault))
         {
-            Fail(run, fault);
+            var location = run.Session.FaultLocation;
+            Fail(run, fault, (string?)location?["file"], (int?)location?["line"] ?? 1,
+                (int?)location?["column"] ?? 1, (int?)location?["endLine"], (int?)location?["endColumn"]);
             return;
         }
         foreach (var worker in run.Workers.Values)
@@ -406,6 +415,7 @@ internal sealed class RuntimeHost : IDisposable
     public void Stop(string reason)
     {
         var preparing = pending;
+        if (preparing != null) CompilationState = CompilationProgress.Cancelled;
         pending = null;
         preparing?.ReleaseCache();
         var run = active;
@@ -442,6 +452,7 @@ internal sealed class RuntimeHost : IDisposable
     public void PrepareNativeStop()
     {
         var preparing = pending;
+        if (preparing != null) CompilationState = CompilationProgress.Cancelled;
         pending = null;
         preparing?.ReleaseCache();
         var run = active;

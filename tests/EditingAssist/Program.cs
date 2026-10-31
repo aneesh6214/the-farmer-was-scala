@@ -128,9 +128,9 @@ Check("mixed comments comment the whole block", ScalaEditingSession.ToggleLineCo
 Check("empty line can be commented", ScalaEditingSession.ToggleLineComment("", 0, 0).Source == "// ");
 Check("CRLF comment toggle retained", ScalaEditingSession.ToggleLineComment("  one\r\n  two\r\n", 2, 12).Source == "  // one\r\n  // two\r\n");
 Check("reverse selection orientation retained", ScalaEditingSession.ToggleLineComment("one\ntwo", 7, 0).Anchor > ScalaEditingSession.ToggleLineComment("one\ntwo", 7, 0).Focus);
-var palette = new ScalaSyntaxPalette { Comment = "C", Class = "T", Function = "F", Keyword = "K", String = "S", Number = "N", Builtin = "B" };
+var palette = new ScalaSyntaxPalette { Comment = "C", Class = "T", FunctionDeclaration = "F", FunctionCall = "F", TypeParameter = "T", Keyword = "K", String = "S", Number = "N", Builtin = "B" };
 var painted = ScalaSyntaxHighlighter.Colorize("/**\n * @param value a [List[Int]]\n * @return [[scala.Double]]\n */", palette);
-Check("Scaladoc tags use light gray and parameter names use ordinary text", painted.Contains("<color=#B8B8B8>@param</color>", StringComparison.Ordinal) && painted.Contains("value<color=C>", StringComparison.Ordinal));
+Check("Scaladoc tags and parameter names share the palette tag color", painted.Contains("<color=#4E6B55>@param</color>", StringComparison.Ordinal) && painted.Contains("<color=#4E6B55>value</color>", StringComparison.Ordinal));
 Check("Scaladoc bracket code uses syntax type colors", painted.Contains("<color=T>List</color>[<color=T>Int</color>]", StringComparison.Ordinal));
 Check("Scaladoc qualified type link uses syntax colors", painted.Contains("scala.<color=T>Double</color>", StringComparison.Ordinal));
 Check("ordinary comments keep literal bracket text", ScalaSyntaxHighlighter.Colorize("// [List[Int]] @param value", palette).Contains("<color=C>// [List[Int]] @param value</color>", StringComparison.Ordinal));
@@ -150,5 +150,16 @@ Check("declared throws annotation gets scaffold entry", throwsEdit.Source.Contai
 string exceptionRef = "/** [[IllegalArgumentException]] */";
 var exceptionColor = ScalaSyntaxHighlighter.Colorize(exceptionRef, palette, semanticSpans: new[] { new SemanticSpan { Start = 6, Length = 24, Kind = "class" } });
 Check("reference compiler type colors override lexical fallback", exceptionColor.Contains("<color=T>IllegalArgumentException</color>", StringComparison.Ordinal));
-Check("reference delimiters use documentation gray", exceptionColor.Contains("<color=#B8B8B8>[[</color>", StringComparison.Ordinal));
+Check("reference delimiters use documentation markup color", exceptionColor.Contains("<color=#4E6B55>[[</color>", StringComparison.Ordinal));
+
+
+var singleTab = ScalaEditingSession.Indent("val x = ", 8, 8, false);
+Check("Tab inserts one two-space level", singleTab.Source == "val x =   " && singleTab.Focus == 10);
+var selectedTab = ScalaEditingSession.Indent("one\ntwo\nthree", 0, 8, false);
+Check("Tab indents selected lines but excludes following line", selectedTab.Source == "  one\n  two\nthree" && selectedTab.Anchor == 2 && selectedTab.Focus == 12);
+var unindent = ScalaEditingSession.Indent(selectedTab.Source, selectedTab.Anchor, selectedTab.Focus, true);
+Check("Shift Tab reverses indentation with correct selection", unindent.Source == "one\ntwo\nthree" && unindent.Anchor == 0 && unindent.Focus == 8);
+var reversed = ScalaEditingSession.Indent("one\ntwo", 7, 0, false);
+Check("reversed selection preserves orientation", reversed.Anchor == 11 && reversed.Focus == 2);
+Check("empty Shift Tab is harmless", ScalaEditingSession.Indent("", 0, 0, true).Source == "");
 Console.WriteLine($"{checks} editing assist checks passed.");

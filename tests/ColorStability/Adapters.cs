@@ -16,6 +16,7 @@ public sealed class Workspace
 public sealed class MainSim
 {
     public static MainSim? Inst; public Workspace workspace = new();
+    public bool IsUnlocked(string key) => true;
 }
 namespace FarmerScala
 {

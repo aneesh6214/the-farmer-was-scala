@@ -135,6 +135,17 @@ internal static class ScalaEditing
                     return true;
                 if (enter && window.workspace.codeCompleter.IsOpen && window.workspace.codeCompleter.IsMatch)
                     return true;
+                bool tab = evt.character == '\t' || evt.keyCode == KeyCode.Tab && (evt.modifiers & EventModifiers.Shift) != 0;
+                if (tab)
+                {
+                    if (window.workspace.codeCompleter.IsOpen)
+                        return true;
+                    Apply(window, ScalaEditingSession.Indent(source, __instance.selectionStringAnchorPosition,
+                        __instance.selectionStringFocusPosition, (evt.modifiers & EventModifiers.Shift) != 0));
+                    sessions.GetOrCreateValue(window).Reset(__instance.text);
+                    evt.Use();
+                    return false;
+                }
                 char typed = enter ? '\n' : evt.character;
                 bool backspace = evt.keyCode == KeyCode.Backspace;
                 if (typed != '\n' && typed != '\r' && "()[]{}".IndexOf(typed) < 0 && !backspace)

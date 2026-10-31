@@ -13,6 +13,8 @@ internal static class FormatterChecks
             });
             return (string?)result["source"] ?? throw new Exception("Formatting failed: " + result.ToJsonString());
         }
+        string block = await Format("def run(): Unit = {\n    List(1,2).foreach { n =>\n        quick_print(n)\n    }\n}\n");
+        check(block.Contains("\n  List(1, 2).foreach { n =>\n    quick_print(n)\n  }", StringComparison.Ordinal), "formatter uses the shared two-space unit for nested blocks");
         const string description = "A crop's entity, preferred ground, and harvested item.";
         const string declaration = "case class Crop(entity: String)\n";
         string expected = "/**\n * " + description + "\n */\n";

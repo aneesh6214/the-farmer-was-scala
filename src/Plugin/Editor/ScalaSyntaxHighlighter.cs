@@ -4,11 +4,6 @@ using System.Text;
 
 namespace FarmerScala.Editor;
 
-internal sealed class ScalaSyntaxPalette
-{
-    public string Keyword = "", String = "", Comment = "", Number = "", Function = "", Class = "", Builtin = "", Search = "", SelectedSearch = "", Documentation = "#B8B8B8";
-}
-
 /// <summary>Immediate Scala lexical colors plus exact-source project symbol overlays.</summary>
 internal static class ScalaSyntaxHighlighter
 {
@@ -16,7 +11,7 @@ internal static class ScalaSyntaxHighlighter
         "harvest can_harvest swap plant move can_move till get_pos_x get_pos_y get_world_size get_entity_type get_ground_type get_time get_tick_count " +
         "use_item get_water do_a_flip change_hat game_print quick_print num_items get_cost clear get_companion unlock num_unlocked measure random simulate " +
         "set_execution_speed set_world_size spawn_drone num_drones max_drones wait_for has_finished pet_the_piggy tap " +
-        "Entities Grounds Items Hats Unlocks Direction North East South West").Split(' '), StringComparer.Ordinal);
+        "Entities Grounds Items Hats Unlocks Directions North East South West").Split(' '), StringComparer.Ordinal);
     internal static bool IsBuiltinName(string name) => GameNames.Contains(name);
     private static readonly HashSet<string> StandardTypes = new HashSet<string>((
         "Any AnyRef AnyVal Nothing Null Unit Boolean Byte Short Int Long Float Double Char String " +
@@ -29,21 +24,23 @@ internal static class ScalaSyntaxHighlighter
         if (source.Length == 0)
             return source;
         var colors = new string[source.Length];
+        Array.Fill(colors, palette.Foreground);
         var semantics = new Dictionary<int, SemanticSpan>();
         if (semanticSpans != null)
             foreach (var span in semanticSpans)
                 if (span.Start >= 0 && span.Length > 0 && span.Start <= source.Length - span.Length)
                     semantics[span.Start] = span;
         var tokens = ScalaLexer.Lex(source);
+        var namedArguments = ScalaNamedArguments.Starts(tokens);
         string declaration = "";
         for (int t = 0; t < tokens.Count; t++)
         {
             var token = tokens[t];
-            string color = "";
+            string color = palette.Foreground;
             switch (token.Kind)
             {
                 case ScalaTokenKind.Comment:
-                    color = palette.Comment;
+                    color = token.Text.StartsWith("/**", StringComparison.Ordinal) && palette.DocComment.Length > 0 ? palette.DocComment : palette.Comment;
                     break;
                 case ScalaTokenKind.String:
                     color = palette.String;
@@ -55,23 +52,29 @@ internal static class ScalaSyntaxHighlighter
                     color = palette.Keyword;
                     break;
                 case ScalaTokenKind.Interpolation:
-                    color = palette.Keyword;
+                    color = palette.Interpolation.Length > 0 ? palette.Interpolation : palette.Keyword;
                     break;
                 case ScalaTokenKind.Identifier:
                 case ScalaTokenKind.Operator:
                     bool member = t > 0 && tokens[t - 1].Text == ".";
                     if (semantics.TryGetValue(token.Start, out var semantic) && semantic.Length == token.Length)
-                        color = semantic.Kind == "builtin" ? palette.Builtin : semantic.Kind == "class" || semantic.Kind == "object" ? palette.Class : semantic.Kind == "function" ? palette.Function : "";
+                        color = palette.Symbol(semantic.Kind);
                     else if (declaration == "def")
-                        color = palette.Function;
-                    else if (declaration == "class" || declaration == "trait" || declaration == "enum" || declaration == "object" || declaration == "type")
+                        color = palette.FunctionDeclaration;
+                    else if (declaration == "type")
+                        color = palette.TypeParameter;
+                    else if (declaration == "class" || declaration == "trait" || declaration == "enum" || declaration == "object")
                         color = palette.Class;
                     else if (!member && GameNames.Contains(token.Text))
                         color = palette.Builtin;
                     else if (!member && StandardTypes.Contains(token.Text))
                         color = palette.Class;
-                    else if (t + 1 < tokens.Count && tokens[t + 1].Text == "(")
-                        color = palette.Function;
+                    if (IsAnnotation(tokens, t) && palette.Annotation.Length > 0)
+                        color = palette.Annotation;
+                    if (namedArguments.Contains(token.Start))
+                        color = palette.NamedArgument;
+                    if (token.Kind == ScalaTokenKind.Operator && declaration != "def" && declaration != "class" && declaration != "type")
+                        color = palette.Operator;
                     break;
             }
             if (token.Kind != ScalaTokenKind.Comment)
@@ -81,6 +84,7 @@ internal static class ScalaSyntaxHighlighter
             if (token.Kind == ScalaTokenKind.Comment && token.Text.StartsWith("/**", StringComparison.Ordinal))
                 ColorScaladoc(source, token.Start, token.End, palette, colors, semantics);
         }
+        ColorStringEscapes(tokens, palette, colors);
         var marks = new byte[source.Length];
         if (!string.IsNullOrEmpty(searchWord))
             for (int offset = 0; offset <= source.Length - searchWord.Length;)
@@ -163,7 +167,7 @@ internal static class ScalaSyntaxHighlighter
                     int parameter = at;
                     while (at < end && !char.IsWhiteSpace(source[at]))
                         at++;
-                    Paint(parameter, at, "");
+                    Paint(parameter, at, palette.Documentation);
                     if (name == "throws" || name == "exception")
                         foreach (var token in ScalaLexer.Lex(source.Substring(parameter, at - parameter)))
                             if (semantics.TryGetValue(parameter + token.Start, out var type) && type.Length == token.Length && type.Kind == "class")
@@ -195,23 +199,75 @@ internal static class ScalaSyntaxHighlighter
                 content++;
                 contentEnd--;
             }
-            Paint(at, close + 1, "");
-            Paint(at, content, palette.Documentation);
-            Paint(contentEnd, close + 1, palette.Documentation);
+            Paint(at, close + 1, palette.Foreground);
+            Paint(at, content, palette.DocMarkup);
+            Paint(contentEnd, close + 1, palette.DocMarkup);
             var code = ScalaLexer.Lex(source.Substring(content, contentEnd - content));
+            string declaration = "";
+            var namedCodeArguments = ScalaNamedArguments.Starts(code);
             for (int i = 0; i < code.Count; i++)
             {
                 var token = code[i];
                 string color = token.Kind == ScalaTokenKind.String ? palette.String : token.Kind == ScalaTokenKind.Number ? palette.Number :
-                    token.Kind == ScalaTokenKind.Keyword ? palette.Keyword : token.Kind == ScalaTokenKind.Comment ? palette.Comment : "";
+                    token.Kind == ScalaTokenKind.Keyword ? palette.Keyword : token.Kind == ScalaTokenKind.Comment ? palette.Comment : token.Kind == ScalaTokenKind.Interpolation ? palette.Interpolation : palette.Foreground;
                 if (token.Identifier)
-                    color = StandardTypes.Contains(token.Text) ? palette.Class : GameNames.Contains(token.Text) ? palette.Builtin :
-                        i + 1 < code.Count && code[i + 1].Text == "(" ? palette.Function : "";
+                    color = declaration == "def" ? palette.FunctionDeclaration :
+                        declaration == "type" ? palette.TypeParameter :
+                        declaration == "class" || declaration == "trait" || declaration == "object" || declaration == "enum" ? palette.Class :
+                        StandardTypes.Contains(token.Text) ? palette.Class : GameNames.Contains(token.Text) ? palette.Builtin : palette.Foreground;
                 if (semantics.TryGetValue(content + token.Start, out var semantic) && semantic.Length == token.Length)
-                    color = semantic.Kind == "builtin" ? palette.Builtin : semantic.Kind == "class" || semantic.Kind == "object" ? palette.Class : semantic.Kind == "function" ? palette.Function : "";
+                    color = palette.Symbol(semantic.Kind);
+                if (IsAnnotation(code, i) && palette.Annotation.Length > 0)
+                    color = palette.Annotation;
+                if (namedCodeArguments.Contains(token.Start))
+                    color = palette.NamedArgument;
+                if (token.Kind == ScalaTokenKind.Operator && declaration != "def" && declaration != "class" && declaration != "type")
+                    color = palette.Operator;
+                if (token.Kind != ScalaTokenKind.Comment)
+                    declaration = token.Kind == ScalaTokenKind.Keyword ? token.Text : "";
                 Paint(content + token.Start, content + token.End, color);
             }
+            ColorStringEscapes(code, palette, colors, content);
             at = close;
+        }
+    }
+
+    private static bool IsAnnotation(IReadOnlyList<ScalaToken> tokens, int index)
+    {
+        if (!tokens[index].Identifier || index + 1 < tokens.Count && tokens[index + 1].Text == ".")
+            return false;
+        int before = index - 1;
+        while (before > 0 && tokens[before].Text == "." && tokens[before - 1].Identifier)
+            before -= 2;
+        return before >= 0 && tokens[before].Text == "@";
+    }
+
+    private static void ColorStringEscapes(IReadOnlyList<ScalaToken> tokens,
+        ScalaSyntaxPalette palette, string[] colors, int offset = 0)
+    {
+        if (palette.Escape.Length == 0)
+            return;
+        foreach (var token in tokens)
+        {
+            if (token.Kind != ScalaTokenKind.String || !token.HasEscapes)
+                continue;
+            string text = token.Text;
+            for (int at = 0; at < text.Length; at++)
+            {
+                if (text[at] != '\\')
+                    continue;
+                int end = Math.Min(text.Length, at + 2);
+                if (end > at + 1 && text[at + 1] == 'u')
+                {
+                    while (end < text.Length && text[end] == 'u')
+                        end++;
+                    for (int digit = 0; digit < 4 && end < text.Length && Uri.IsHexDigit(text[end]); digit++)
+                        end++;
+                }
+                for (int paint = at; paint < end; paint++)
+                    colors[offset + token.Start + paint] = palette.Escape;
+                at = end - 1;
+            }
         }
     }
     private static bool SplitsPair(string source, int at) => at > 0 && at < source.Length && char.IsHighSurrogate(source[at - 1]) && char.IsLowSurrogate(source[at]);

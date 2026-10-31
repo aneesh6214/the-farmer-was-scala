@@ -28,7 +28,7 @@ namespace UnityEngine
     }
     public enum KeyCode
     {
-        None = 0, Backspace = 8, Return = 13, Slash = 47, L = 108, KeypadEnter = 271
+        None = 0, Backspace = 8, Tab = 9, Return = 13, Slash = 47, L = 108, KeypadEnter = 271
     }
     public sealed class Event
     {

@@ -6,23 +6,27 @@ import scala.meta.*
   * Explicit, pure source formatting. No build/link tasks and no source writes.
   */
 object ScriptFormatter:
-  private lazy val config = org.scalafmt.Scalafmt.parseHoconConfig("""
+  private val configs = scala.collection.mutable.Map.empty[Int, org.scalafmt.config.ScalafmtConfig]
+  private def config(indentSize: Int) = configs.getOrElseUpdate(indentSize, org.scalafmt.Scalafmt.parseHoconConfig(s"""
     version = 3.11.5
     runner.dialect = scala3
-    indent.main = 2
-    indent.significant = 2
+    indent.main = $indentSize
+    indent.significant = $indentSize
+    indent.callSite = $indentSize
+    indent.defnSite = $indentSize
     maxColumn = 100
     docstrings.style = Asterisk
     docstrings.oneline = unfold
     docstrings.blankFirstLine = unfold
     rewrite.scala3.convertToNewSyntax = false
     rewrite.scala3.removeOptionalBraces = no
-    """).get
+    """).get)
 
-  def format(raw: String): Either[String, String] =
+  def format(raw: String, indentSize: Int): Either[String, String] =
     try
+      require(indentSize >= 1 && indentSize <= 8, "Invalid editor indentation size.")
       val wrapper = "object __FarmerFormat {\n" + raw + "\n}\n"
-      val formatted = org.scalafmt.Scalafmt.format(wrapper, config).get
+      val formatted = org.scalafmt.Scalafmt.format(wrapper, config(indentSize)).get
       val open = formatted.indexOf('{'); val close = formatted.lastIndexOf('}')
       if open < 0 || close <= open then throw new IllegalStateException("Formatter did not preserve the script wrapper.")
       val begin = if formatted.charAt(open + 1) == '\n' then open + 2 else open + 1
@@ -35,7 +39,7 @@ object ScriptFormatter:
       val source = body.linesIterator.map { line =>
         val insideLiteral = protectedRanges.exists((start, end) => start < at && at < end)
         at += line.length + 1
-        if !insideLiteral && line.startsWith("  ") then line.drop(2) else line
+        if !insideLiteral && line.startsWith(" " * indentSize) then line.drop(indentSize) else line
       }.mkString("\n")
       // Formatting and wrapper removal may change indentation but must preserve
       // literal contents, including interpolated/triple-quoted strings.

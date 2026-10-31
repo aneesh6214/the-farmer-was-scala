@@ -51,7 +51,7 @@ public sealed class WorkerTransport : IDisposable
         _ = Task.Run(ReadLoop);
     }
 
-    public JsonObject Request(string op, JsonArray args)
+    public JsonObject Request(string op, JsonArray args, JsonObject? location = null)
     {
         Cancellation.ThrowIfCancellationRequested();
         long id = Interlocked.Increment(ref nextId);
@@ -68,6 +68,7 @@ public sealed class WorkerTransport : IDisposable
                 ["drone"] = drone,
                 ["id"] = id,
                 ["op"] = op,
+                ["location"] = location?.DeepClone(),
                 ["args"] = args.DeepClone()
             });
             return waiter.Task.WaitAsync(Cancellation).GetAwaiter().GetResult();

@@ -117,6 +117,23 @@ if (lateError != "DroneRemoved" || (int)requestsType.GetProperty("Count")!.GetVa
     throw new Exception("An enqueue inserted after retirement/drain retained a command or missed its callback.");
 Console.WriteLine("PASS post-retirement insertion fails exactly once and leaves no queued callback");
 
+// A native side effect can fail after its binding returned. Preserve its queued call-site range.
+var faultState = (ProgramState)RuntimeHelpers.GetUninitializedObject(typeof(ProgramState));
+faultState.currentExecuteException = new ExecuteException("late native failure");
+var faultChannel = Activator.CreateInstance(channelType)!;
+var location = new JObject { ["file"] = "helper.scala", ["line"] = 9, ["column"] = 5, ["endLine"] = 9, ["endColumn"] = 10 };
+var faultRequest = new JObject { ["op"] = "plant", ["location"] = location };
+var faultCommand = Activator.CreateInstance(commandType, new object[] { faultRequest, (Action<JToken>)(_ => { }), (Action<string, string>)((_, _) => { }) })!;
+channelType.GetField("Pending")!.SetValue(faultChannel, faultCommand);
+var faultBinding = Activator.CreateInstance(bindingType, faultState, nativeExecution, faultChannel)!;
+object activeFaults = typeof(NativeGameSession).GetField("activeStates", flags)!.GetValue(retiredSession)!;
+activeFaults.GetType().GetMethod("TryAdd")!.Invoke(activeFaults, new[] { (object)8, faultBinding });
+if (retiredSession.PollFault() != "late native failure" || !JToken.DeepEquals(retiredSession.FaultLocation, location))
+    throw new Exception("Late native side-effect failure lost its Scala call-site range.");
+faultRequest["location"]!["line"] = 99;
+if ((int?)retiredSession.FaultLocation?["line"] != 9) throw new Exception("Native fault retained a mutable request location.");
+Console.WriteLine("PASS native side-effect failure retains an independent exact Scala source range");
+
 // Run the production patch decisions against the actual installed method
 // metadata. No Unity object, native action, Steam callback or network is invoked.
 object? Invoke(Type type, string method, params object?[] arguments)

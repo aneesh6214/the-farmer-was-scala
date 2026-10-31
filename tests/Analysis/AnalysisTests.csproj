@@ -4,12 +4,16 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <Compile Include="../../src/Plugin/Editor/CompilerAnalysisProvider.cs" Link="CompilerAnalysisProvider.cs" />
     <Compile Include="../../src/Plugin/Runtime/ProcessJob.cs" Link="ProcessJob.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaIndentation.cs" Link="ScalaIndentation.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaSyntaxPalette.cs" Link="ScalaSyntaxPalette.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaLexer.cs" Link="ScalaLexer.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaCompletionModel.cs" Link="ScalaCompletionModel.cs" />
     <Compile Include="../../src/Plugin/Editor/AnalysisModels.cs" Link="AnalysisModels.cs" />
     <Compile Include="../../src/Plugin/Editor/SemanticSpan.cs" Link="SemanticSpan.cs" />
     <Compile Include="../../src/Plugin/Editor/SemanticSpanMerger.cs" Link="SemanticSpanMerger.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaNamedArguments.cs" Link="ScalaNamedArguments.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaSyntaxHighlighter.cs" Link="ScalaSyntaxHighlighter.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaSymbolLocation.cs" Link="ScalaSymbolLocation.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaCompletionUnlocks.cs" Link="ScalaCompletionUnlocks.cs" />
   </ItemGroup>
 </Project>

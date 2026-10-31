@@ -30,6 +30,7 @@ internal sealed class AnalysisResolution
 {
     public AnalysisDefinition? Definition;
     public string? HoverText;
+    public string? SymbolKind;
     public bool IsGameBuiltin;
     public string? GameFunctionName;
 }
@@ -40,6 +41,8 @@ internal static class AnalysisResolutionMerger
     {
         if (compiler.IsGameBuiltin)
             return compiler;
+        if (string.IsNullOrEmpty(compiler.SymbolKind))
+            compiler.SymbolKind = local.SymbolKind;
         if (compiler.Definition == null && local.Definition != null)
             compiler.Definition = local.Definition;
         string Kind(string? text)

@@ -311,7 +311,7 @@ internal static class ScalaNavigation
                 Vector3 anchor = input.transform.TransformPoint(info.characterInfo[character].bottomLeft)
                     + (Vector3)BlinkManager.GetCodeOffset(input.GetComponent<RectTransform>());
                 string formatted = ScalaHoverFormatter.Format(result.HoverText!,
-                    ScalaHighlighting.CreatePalette(ThemeManager.Inst.Theme), projectSymbol: !result.IsGameBuiltin);
+                    ScalaHighlighting.CreatePalette(ThemeManager.Inst.Theme), projectSymbol: !result.IsGameBuiltin, symbolKind: result.SymbolKind);
                 __result = new TooltipInfo(formatted, 0.3f, anchor, TooltipInfo.Anchor.BottomRight, docs);
                 return false;
             }

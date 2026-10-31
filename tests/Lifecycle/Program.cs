@@ -112,18 +112,21 @@ async Task PumpUntil(Func<bool> done, int timeout = 15000)
         await Task.Delay(10);
     }
 }
+Check(host.CompilationState == CompilationProgress.None, "new host has no compilation status");
 Source("slow");
 var duration = Stopwatch.StartNew();
 host.Run(window);
+Check(host.CompilationState == CompilationProgress.Compiling, "accepted Play records compiling status before background work");
 Check(duration.ElapsedMilliseconds < 500 && host.IsRunning && MainSim.Inst.Starts == 0, "Play returns while the compiler prepares an immutable snapshot");
 host.Stop("cancel preparing");
-Check(!host.IsRunning, "Stop immediately revokes a pending compilation");
+Check(!host.IsRunning && host.CompilationState == CompilationProgress.Cancelled, "Stop immediately revokes a pending compilation and marks it cancelled");
 await Task.Delay(1700);
 host.Tick();
 Check(MainSim.Inst.Starts == 0, "a late compiler success cannot restart a stopped run");
 Source("error");
 host.Run(window);
 await PumpUntil(() => !host.IsRunning);
+Check(host.CompilationState == CompilationProgress.Failed, "compiler error records failure rather than Done");
 Check(MainSim.Inst.Starts == 0 && EditorIntegration.Error?.Contains("main.scala:2:7:bad type") == true, "compiler diagnostics keep the real line and column and launch no worker");
 Source("retry");
 host.Run(window);
@@ -131,6 +134,7 @@ await PumpUntil(() => !host.IsRunning);
 File.WriteAllText(Path.Combine(EditorIntegration.Project.Directory, "repaired"), "cache repaired");
 host.Run(window);
 await PumpUntil(() => MainSim.Inst.Starts == 1 && !host.IsRunning);
+Check(host.CompilationState == CompilationProgress.Done, "successful compilation retains Done after execution completes");
 Check(MainSim.Inst.Starts == 1, "an unchanged source can retry after a transient compiler failure is repaired");
 Source("valid");
 host.Run(window);
@@ -217,4 +221,13 @@ catch (Exception error) when (error is UnauthorizedAccessException || error is I
 {
     Console.WriteLine("SKIP reparse fixture: " + error.Message);
 }
+Source("hold");
+host.Run(window);
+await PumpUntil(() => MainSim.Inst.Starts == 4 && host.IsRunning);
+FarmerScala.Game.NativeGameSession.InjectedFault = "late plant failure";
+FarmerScala.Game.NativeGameSession.InjectedLocation = new JObject { ["file"] = "helper.scala", ["line"] = 9, ["column"] = 5, ["endLine"] = 9, ["endColumn"] = 10 };
+host.Tick();
+Check(!host.IsRunning && EditorIntegration.Error == "helper.scala:9:5:late plant failure", "late native side-effect fault reaches the editor with its cross-file Scala call location");
+FarmerScala.Game.NativeGameSession.InjectedFault = null;
+FarmerScala.Game.NativeGameSession.InjectedLocation = null;
 Console.WriteLine(checks + " production lifecycle checks passed (native Unity calls adapted).");

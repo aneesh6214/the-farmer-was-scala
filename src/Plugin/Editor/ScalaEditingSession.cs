@@ -256,7 +256,7 @@ internal sealed class ScalaEditingSession
             char last = lastToken != null && lastToken.Text.Length == 1 ? lastToken.Text[0] : '\0';
             char matching = last == '{' ? '}' : last == '(' ? ')' : last == '[' ? ']' : '\0';
             bool more = matching != '\0' || IndentsAfter(trimmed);
-            string inner = indent + (more ? "  " : "");
+            string inner = indent + (more ? ScalaIndentation.Spaces : "");
             insertion = newline + inner;
             caret = start + insertion.Length;
             int whitespace = 0;
@@ -418,5 +418,46 @@ internal sealed class ScalaEditingSession
                 beginning = false;
             }
         }
+    }
+
+    internal static ScalaEditingResult Indent(string source, int anchor, int focus, bool unindent)
+    {
+        int first = System.Math.Min(anchor, focus), last = System.Math.Max(anchor, focus);
+        if (first == last && !unindent)
+            return new ScalaEditingResult { Source = source.Insert(first, ScalaIndentation.Spaces), Anchor = first + ScalaIndentation.Size, Focus = first + ScalaIndentation.Size };
+        var edits = new System.Collections.Generic.List<(int At, int Remove, string Add)>();
+        int line = first == 0 ? 0 : source.LastIndexOf('\n', first - 1) + 1;
+        int limit = last > first && last > 0 && source[last - 1] == '\n' ? last - 1 : last;
+        while (line <= limit)
+        {
+            int remove = 0;
+            if (unindent)
+            {
+                if (line < source.Length && source[line] == '\t')
+                    remove = 1;
+                else
+                    while (remove < ScalaIndentation.Size && line + remove < source.Length && source[line + remove] == ' ')
+                        remove++;
+            }
+            edits.Add((line, remove, unindent ? "" : ScalaIndentation.Spaces));
+            int next = source.IndexOf('\n', line);
+            if (next < 0) break;
+            line = next + 1;
+        }
+        int Map(int at)
+        {
+            int delta = 0;
+            foreach (var edit in edits)
+            {
+                if (at < edit.At) break;
+                if (at < edit.At + edit.Remove) return edit.At + delta + edit.Add.Length;
+                delta += edit.Add.Length - edit.Remove;
+            }
+            return at + delta;
+        }
+        var output = new System.Text.StringBuilder(source);
+        for (int n = edits.Count - 1; n >= 0; n--)
+            output.Remove(edits[n].At, edits[n].Remove).Insert(edits[n].At, edits[n].Add);
+        return new ScalaEditingResult { Source = output.ToString(), Anchor = Map(anchor), Focus = Map(focus) };
     }
 }

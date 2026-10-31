@@ -61,6 +61,7 @@ assert(result == (randomValue, millis, nanos, 99))
 assert(state.value == 8)
 quick_print("scala-replay-ok")
 """);
+File.WriteAllText(Path.Combine(project, "nativeFault.scala"), "def nativeProbe(): Int = {\n    get_world_size()\n}\nnativeProbe()\n");
 var first = await compiler.CompileAsync(project, "main.scala", Path.Combine(scratch, "build"));
 if (!first.ok) throw new Exception(JsonSerializer.Serialize(first));
 Check(first.ok && File.Exists(first.artifact), "real Scala.js compilation");

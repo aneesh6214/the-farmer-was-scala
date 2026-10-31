@@ -134,7 +134,7 @@ public sealed class ScalaEngine
             response = replay;
         else
         {
-            response = transport.Request(op, args);
+            response = transport.Request(op, args, lastUserLocation is null ? null : LocationFields(lastUserLocation));
             journal.Record(new JsonObject
             {
                 ["kind"] = "action",
@@ -162,7 +162,7 @@ public sealed class ScalaEngine
         task["globals"] = globals.DeepClone();
         if (Encoding.UTF8.GetByteCount(task.ToJsonString()) > ReplayJournal.MaximumTaskBytes)
             throw new ReplayCapacityException("This drone's replay journal and simulation globals exceed the worker task budget.");
-        JsonObject response = transport.Request("spawn_drone", new JsonArray(task));
+        JsonObject response = transport.Request("spawn_drone", new JsonArray(task), lastUserLocation is null ? null : LocationFields(lastUserLocation));
         journal.Record(new JsonObject
         {
             ["kind"] = "spawn",

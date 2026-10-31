@@ -226,7 +226,7 @@ function Build-Mod([string]$Root, [string]$GamePath, $Tools, [string]$Log) {
 function Initialize-OfflineCompiler([string]$Sdk, [string]$Toolchain, [string]$Compiler, [string]$Runtime, [string]$Work, [string]$Log, [switch]$Offline) {
     $project = Join-Path $Work 'project'
     New-Item -ItemType Directory -Path $project -Force | Out-Null
-    [IO.File]::WriteAllText((Join-Path $project 'main.scala'), "val checked = List(1, 2, 3).map(_ + 1)\nval direction: Direction = Direction.North\n".Replace('\n', "`n"), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $project 'main.scala'), "val checked = List(1, 2, 3).map(_ + 1)\nval direction: Directions = Directions.North\n".Replace('\n', "`n"), [Text.UTF8Encoding]::new($false))
     $request = @{ id = 1; op = 'compile'; project = $project; entry = 'main.scala'; output = (Join-Path $Work 'build') } | ConvertTo-Json -Compress
     $info = New-Object Diagnostics.ProcessStartInfo
     $info.FileName = $Runtime

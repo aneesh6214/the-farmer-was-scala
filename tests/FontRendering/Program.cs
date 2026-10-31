@@ -1,0 +1,60 @@
+using FarmerScala.Editor;
+using TMPro;
+using UnityEngine;
+using System.Reflection;
+int checks=0;
+void Check(bool condition,string label) { if(!condition)throw new Exception(label);checks++;Console.WriteLine("PASS "+label); }
+Material Native(string atlas="atlas") {
+    var source=new Material { name="Native code font" };
+    source.SetColor(ScalaFontRendering.FaceColor,new Color(2,2,2,.7f));
+    source.Other["_MainTex"]=atlas;source.Other["_OutlineWidth"] = .303f;source.Other["_StencilComp"]=8;
+    return source;
+}
+TMP_Text Text(Material source,TMP_FontAsset font) { var text=new GameObject().AddComponent<TMP_Text>();text.fontSharedMaterial=source;text.font=font;return text; }
+bool Scaled(Material material) { var c=material.GetColor(ScalaFontRendering.FaceColor);return c.r==1.5f&&c.g==1.5f&&c.b==1.5f&&c.a==.7f; }
+var source=Native();var font=new TMP_FontAsset {name="FiraCode-Regular SDF",material=source};
+var text=Text(source,font);var title=Text(source,font);var input=Text(source,font);
+var window=new CodeWindow(text,false);
+Check(!ScalaFontRendering.Refresh(window)&&Material.Copies==0,"Default save creates no materials or changes");
+window.Scala=true;
+Check(ScalaFontRendering.Refresh(window),"Scala code prepares scaled overlay and inline-hover material");
+var owned=text.fontSharedMaterial;
+Check(!ReferenceEquals(owned,source)&&Scaled(owned),"code overlay has a private 1.5x face color with original alpha");
+Check(source.GetColor(ScalaFontRendering.FaceColor).r==2,"native shared font remains at 2x");
+Check(ReferenceEquals(title.fontSharedMaterial,source)&&ReferenceEquals(input.fontSharedMaterial,source),"file title and transparent input keep original material");
+Check(owned.Other["_MainTex"].Equals(source.Other["_MainTex"])&&owned.Other["_OutlineWidth"].Equals(.303f)&&owned.Other["_StencilComp"].Equals(8),"atlas, outline, and stencil settings are preserved");
+int copies=Material.Copies;ScalaFontRendering.Refresh(window);
+Check(Material.Copies==copies&&ReferenceEquals(text.fontSharedMaterial,owned),"repainting unchanged code reuses its material without allocations");
+int hash=TMP_TextUtilities.GetSimpleHashCode(ScalaFontRendering.HoverMaterialName.ToUpperInvariant());
+Check(MaterialReferenceManager.TryGetMaterial(hash,out var hoverMaterial)&&Scaled(hoverMaterial),"inline font tag resolves a registered 1.5x material using TMP uppercase hashing");
+Check(hoverMaterial.Other["_MainTex"].Equals(source.Other["_MainTex"]),"hover material uses the correct Fira Code atlas");
+var info=new TooltipInfo("Prose <font=\"FiraCode-Regular SDF\"><color=#79A978>code</color></font>",.3f,new Vector3(2,3,4),TooltipInfo.Anchor.BottomRight,"functions/plant") { itemBlock=new object() };
+var prepared=ScalaFontRendering.PrepareHover(window,info)!;
+Check(!ReferenceEquals(info,prepared)&&info.text.Contains("<font=\"FiraCode-Regular SDF\">"),"cached native tooltip object is never mutated");
+Check(prepared.text.Contains(ScalaFontRendering.CodeFontTag)&&prepared.text.StartsWith("Prose "),"only inline Fira Code material selection changes");
+Check(prepared.delay==info.delay&&prepared.fixedPosition==info.fixedPosition&&prepared.anchor==info.anchor&&prepared.docs==info.docs&&ReferenceEquals(prepared.itemBlock,info.itemBlock),"hover delay, anchoring, docs/right-click and item data survive");
+Check(ReferenceEquals(ScalaFontRendering.PrepareHover(window,prepared),prepared),"already-normalized tooltip is not wrapped or copied again");
+Check(ReferenceEquals(ScalaFontRendering.PrepareHover(window,new TooltipInfo("Plain prose"))!.text,"Plain prose"),"plain tooltip text is unchanged");
+Check(ScalaFontRendering.PrepareHover(window,null)==null,"absent tooltip remains absent");
+window.Scala=false;
+Check(ReferenceEquals(ScalaFontRendering.PrepareHover(window,info),info),"Default save hover keeps native formatting");
+ScalaFontRendering.Refresh(window);
+Check(ReferenceEquals(text.fontSharedMaterial,source)&&owned.Destroyed&&!source.Destroyed,"switching to Default restores original and destroys only private material");
+window.Scala=true;ScalaFontRendering.Refresh(window);owned=text.fontSharedMaterial;
+Check(MaterialReferenceManager.Materials.Count==1,"reopening Scala windows does not allocate another named hover material");
+var replacement=Native("new atlas");text.fontSharedMaterial=replacement;ScalaFontRendering.Refresh(window);
+Check(owned.Destroyed&&Scaled(text.fontSharedMaterial)&&text.fontSharedMaterial.Other["_MainTex"].Equals("new atlas"),"native font/material replacement is normalized without retaining stale atlas");
+ScalaFontRendering.Clear();
+Check(ReferenceEquals(text.fontSharedMaterial,replacement)&&!replacement.Destroyed,"plugin cleanup restores latest native material");
+Check(!hoverMaterial.Destroyed&&MaterialReferenceManager.Materials.Count==1,"TMP's one cached hover material stays valid for existing tooltip tags");
+ScalaFontRendering.Refresh(window);owned=text.fontSharedMaterial;
+UnityEngine.Object.Destroy(text.GetComponent<ScalaCodeTextMaterial>()!);
+Check(owned.Destroyed&&ReferenceEquals(text.fontSharedMaterial,replacement),"window destruction releases its private material");
+var bare=new Material();var unsupported=Text(bare,font);var otherWindow=new CodeWindow(unsupported,true);
+ScalaFontRendering.Refresh(otherWindow);
+Check(ReferenceEquals(unsupported.fontSharedMaterial,bare),"materials without the face property are left intact");
+var patch=typeof(ScalaFontRendering).GetNestedType("CodeWindowMaterials",BindingFlags.NonPublic)!;
+var methods=(IEnumerable<MethodBase>)patch.GetMethod("TargetMethods",BindingFlags.Static|BindingFlags.NonPublic)!.Invoke(null,null)!;
+Check(methods.All(m=>m!=null)&&methods.Select(m=>m.Name).Order().SequenceEqual(new[]{"OnThemeChanged","UpdateSearch","UpdateTokens"}),"render hooks cover initial load, search, and theme repaint including read-only windows");
+ScalaFontRendering.Clear();
+Console.WriteLine($"Font rendering checks passed: {checks}; production ownership and hook logic with Unity material adapters.");

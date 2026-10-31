@@ -93,3 +93,15 @@ var failureEvent = new Event { character = '\n' };
 Check(!Dispatch(failure, failureEvent) && failure.CodeInput.text == "\n" && failureEvent.Used, "native callback failure after mutation never replays the newline");
 Check(FarmerScala.Plugin.Instance.Logs.Single().Contains("injected native mesh failure", StringComparison.Ordinal), "native fallback retains diagnostic stack context");
 Console.WriteLine($"{checks} native editing hook checks passed (Unity/native surfaces adapted).");
+
+var tabbed = new CodeWindow("if true then");
+Dispatch(tabbed, new Event { keyCode = KeyCode.Return, character = '\n' });
+Check(tabbed.CodeInput.text == "if true then\n  ", "native Enter inserts the shared two-space indentation");
+Dispatch(tabbed, new Event { keyCode = KeyCode.Tab, character = '\t' });
+Check(tabbed.CodeInput.text == "if true then\n    ", "native Tab inserts the same two-space unit");
+Dispatch(tabbed, new Event { keyCode = KeyCode.Tab, character = '\t', modifiers = EventModifiers.Shift });
+Check(tabbed.CodeInput.text == "if true then\n  ", "native Shift Tab removes one shared indentation unit");
+tabbed.workspace.undoHistory.Undo();
+Check(tabbed.CodeInput.text == "if true then\n    ", "Tab changes participate in native undo");
+tabbed.workspace.codeCompleter.IsOpen = true;
+Check(Dispatch(tabbed, new Event { keyCode = KeyCode.Tab, character = '\t' }), "Tab accepts completion through native path while popup is open");

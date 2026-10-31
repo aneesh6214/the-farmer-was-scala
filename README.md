@@ -1,6 +1,6 @@
 # The Farmer Was Scala
 
-https://github.com/user-attachments/assets/c6768477-f21f-44bd-a47b-9c184ba91dd1
+https://github.com/user-attachments/assets/54f45085-caef-4dbb-8433-5a6496c99264
 
 The Farmer Was Replaced... by Scala! Play [The Farmer Was Replaced](https://store.steampowered.com/app/2060160/The_Farmer_Was_Replaced/) with [Scala 3](https://docs.scala-lang.org/scala3/book/introduction.html) in the game's own editor.
 

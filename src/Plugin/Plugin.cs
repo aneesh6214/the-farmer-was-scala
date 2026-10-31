@@ -10,7 +10,7 @@ using HarmonyLib;
 
 namespace FarmerScala;
 
-[BepInPlugin("dev.farmerscala", "Farmer Scala", "1.0.0")]
+[BepInPlugin("dev.farmerscala", "Farmer Scala", "1.0.1")]
 public sealed class Plugin : BaseUnityPlugin
 {
     public static Plugin? Instance
@@ -125,6 +125,8 @@ public sealed class Plugin : BaseUnityPlugin
         ready = false;
         ScalaDiagnostics.Clear();
         ScalaEditorTools.Clear();
+        ScalaLineNumbers.Clear();
+        ScalaFontRendering.Clear();
         ScalaAnalysis.Dispose();
         if (Host != null)
             EditorIntegration.ProjectChanged -= Host.ProjectChanged;

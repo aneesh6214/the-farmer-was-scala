@@ -46,6 +46,7 @@ namespace FarmerScala.Game
         /// <summary>First argument is a unique logical worker connection ID, not the native drone slot.</summary>
         public event Action<int, JObject>? TaskStarting;
         public event Action<int>? DroneRemoved;
+        public JObject? FaultLocation { get; private set; }
         public bool HasLiveExecution => activeStates.Values.Any(b => b.Execution.sim.IsExecuting());
 
         public Node CreateSimulationNode(CodeWindow simulationWindow)
@@ -130,6 +131,7 @@ namespace FarmerScala.Game
                 var error = binding.State.currentExecuteException;
                 if (error != null)
                 {
+                    FaultLocation = binding.Channel.Pending?.Request?["location"]?.DeepClone() as JObject;
                     string message = Localize(error.Message);
                     binding.Channel.Pending?.Fail("GameError", message);
                     binding.Channel.Pending = null;

@@ -27,6 +27,7 @@ int checks = 0;
 async Task<JsonObject> Send(JsonObject request)
 {
     request["id"] = ++id;
+    request["indentSize"] = ScalaIndentation.Size;
     await process.StandardInput.WriteLineAsync(request.ToJsonString());
     await process.StandardInput.FlushAsync();
     for (int line = 0; line < 32; line++)
@@ -140,6 +141,64 @@ try
     Check((bool?)builtinResult["isGameBuiltin"] == true && builtinResult["definition"] == null, "game API preserves native documentation behavior");
     var builtinColors = await Send(Request("analyze", builtin, 0));
     Check(builtinColors["spans"]!.AsArray().Any(n => (string?)n?["kind"] == "builtin"), "game API semantic green category");
+    string locals = "def go(pos: (Int, Int)): Unit = {\n  val size = get_world_size()\n  val dx = Math.floorMod(pos._1 - get_pos_x(), size)\n  val dy = Math.floorMod(pos._2 - get_pos_y(), size)\n  var xSteps = math.min(dx, size - dx)\n  var ySteps = math.min(dy, size - dy)\n  while (xSteps > 0) { xSteps -= 1 }\n  quick_print(xSteps, ySteps)\n}\n";
+    void LocalColors(JsonObject response, string text)
+    {
+        foreach (var span in response["spans"]!.AsArray())
+        {
+            int at = (int)span!["start"]!, length = (int)span["length"]!;
+            string name = text.Substring(at, length);
+            if (new[] { "size", "dx", "dy", "xSteps", "ySteps", "pos" }.Contains(name))
+                Check((string?)span["kind"] == (name == "pos" ? "parameter" : "value"), "local identity stays neutral across SDK/source documents: " + name + " " + span);
+            if (name == "math") Check((string?)span["kind"] == "namespace" || (string?)span["kind"] == "value", "scala.math keeps namespace foreground: " + span);
+            if (name == "Math") Check((string?)span["kind"] == "class", "java.lang.Math keeps class color: " + span);
+        }
+        Check(response["spans"]!.AsArray().Any(n => (string?)n?["kind"] == "builtin"), "game API still has builtin identity alongside locals");
+    }
+    LocalColors(await Send(Request("analyze", locals, 0)), locals);
+    lib += "\ndef other(): Int = { val size = 8; val dx = 2; size + dx }\n";
+    LocalColors(await Send(Request("analyze", locals, 0)), locals);
+    lib += "val another = 2\n";
+    LocalColors(await Send(Request("analyze", locals, 0)), locals);
+    var treeCompletion = await Send(Request("complete", "Entities.", 9));
+    Check((string?)treeCompletion["gameCompletions"]?["Tree"] == "tree", "enum completion carries native unlock identity: " + treeCompletion.ToJsonString());
+    var directionsCompletion = await Send(Request("complete", "Directions.", 11));
+    Check((string?)directionsCompletion["gameCompletions"]?["North"] == "north", "plural direction case has native unlock identity: " + directionsCompletion.ToJsonString());
+    string aliasCompletion = "import game.api.{move as walk}\nwal";
+    var aliasItems = await Send(Request("complete", aliasCompletion, aliasCompletion.Length));
+    Check((string?)aliasItems["gameCompletions"]?["walk"] == "move", "renamed game completion retains native function unlock identity: " + aliasItems.ToJsonString());
+    var userItems = await Send(Request("complete", "def plant(): Int = 4\npla", 24));
+    Check(userItems["completions"]!.AsArray().Any(n => (string?)n == "plant") && userItems["gameCompletions"]?["plant"] == null, "same-named user function is not filtered as a locked game API: " + userItems.ToJsonString());
+    string localHover = "def demo(): Int = { val dx = 3; dx }\n";
+    var localTarget = await Send(Request("resolve", localHover, localHover.LastIndexOf("dx", StringComparison.Ordinal) + 2));
+    Check((bool?)localTarget["isGameBuiltin"] == false && (string?)localTarget["definition"]?["file"] == "f0", "document-local navigation cannot resolve into an unrelated SDK file: " + localTarget.ToJsonString());
+    string conventions = "val rowToCrop = Map(0 -> Entities.Grass)\ncase class Tile(x: Int, y: Int)\nclass Farm(val size: Int, label: String) {\n  val crops = 4\n  var water = 2\n  def inspect[A](arg: A): Int = { val inside = 1; crops + inside + size }\n}\nobject Config { val count = 8 }\nval farm = new Farm(3, \"x\")\nval result = farm.crops + farm.size + Config.count\nList((0, 1)).foreach { tile => rowToCrop(tile._1) }\nval pair = Tile(0, 1)\nval first = pair.x\nfarm.inspect(1)\n";
+    void ConventionTokens(JsonObject answer)
+    {
+        var tokens = answer["spans"]!.AsArray();
+        string Kind(int at) => (string?)tokens.FirstOrDefault(s => (int?)s?["start"] == at)?["kind"] ?? "missing";
+        foreach (int at in new[] { conventions.IndexOf("rowToCrop", StringComparison.Ordinal), conventions.LastIndexOf("rowToCrop", StringComparison.Ordinal) })
+            Check(Kind(at) == "value", "Map val keeps value semantics even when called through apply: " + at + " " + Kind(at));
+        Check(Kind(conventions.IndexOf("tile =>", StringComparison.Ordinal)) == "parameter" && Kind(conventions.IndexOf("tile._1", StringComparison.Ordinal)) == "parameter", "lambda parameter retains parameter identity at declaration and use");
+        Check(Kind(conventions.IndexOf("_1", StringComparison.Ordinal)) == "field", "standard tuple accessor uses field identity: " + Kind(conventions.IndexOf("_1", StringComparison.Ordinal)));
+        foreach (string fieldName in new[] { "size", "crops", "water", "count" })
+            Check(Kind(conventions.IndexOf(fieldName, StringComparison.Ordinal)) == "field", "class/object fields have member identity: " + fieldName);
+        Check(Kind(conventions.IndexOf("x: Int", StringComparison.Ordinal)) == "field", "case-class constructor field is purple at its declaration too");
+        Check(Kind(conventions.IndexOf("label:", StringComparison.Ordinal)) == "parameter", "plain constructor parameter is not a public val field");
+        Check(Kind(conventions.IndexOf("inside =", StringComparison.Ordinal)) == "value", "method-local val remains a value");
+        Check(Kind(conventions.IndexOf("inspect[", StringComparison.Ordinal)) == "functionDeclaration", "method declaration has its own category");
+        Check(Kind(conventions.LastIndexOf("inspect", StringComparison.Ordinal)) == "function" && Kind(conventions.IndexOf("foreach", StringComparison.Ordinal)) == "function", "user and standard-library method calls use the same category");
+        Check(Kind(conventions.IndexOf("[A]", StringComparison.Ordinal) + 1) == "typeParameter", "generic parameter declaration has a dedicated category");
+        Check(Kind(conventions.LastIndexOf("pair.x", StringComparison.Ordinal) + 5) == "field", "case-class field access uses member identity");
+        Check(!tokens.Any(t => t?["probeSymbol"] != null) && answer["probeNodes"] == null, "temporary compiler metadata tracing is absent from production responses");
+    }
+    ConventionTokens(await Send(Request("analyze", conventions, 0)));
+    lib += "\nval unrelatedConventionEdit = 1\n";
+    ConventionTokens(await Send(Request("analyze", conventions, 0)));
+    var tupleHoverKind = await Send(Request("resolve", conventions, conventions.IndexOf("_1", StringComparison.Ordinal) + 2));
+    Check((string?)tupleHoverKind["symbolKind"] == "field", "resolved tuple hover carries member styling identity");
+    var mapHoverKind = await Send(Request("resolve", conventions, conventions.LastIndexOf("rowToCrop", StringComparison.Ordinal) + 5));
+    Check((string?)mapHoverKind["symbolKind"] == "value", "resolved callable Map hover remains a value");
     string shadow = "def harvest(): Int = 4\nharvest()\n";
     var shadowColors = await Send(Request("analyze", shadow, 0));
     Check(!shadowColors["spans"]!.AsArray().Any(n => (string?)n?["kind"] == "builtin"), "shadowed game name does not become builtin green");
@@ -149,6 +208,14 @@ try
     string memberShadow = "class Farmer:\n  def harvest(): Int = 1\nval farmer = Farmer()\nfarmer.harvest()\n";
     var memberColors = await Send(Request("analyze", memberShadow, 0));
     Check(!memberColors["spans"]!.AsArray().Any(n => (string?)n?["kind"] == "builtin"), "user member harvest does not inherit native green");
+    string enumColors = "enum CropKind { case Hay, Wood }\nval kind: CropKind = CropKind.Hay\n";
+    var enumColorTokens = (await Send(Request("analyze", enumColors, 0)))["spans"]!.AsArray();
+    foreach (int caseAt in new[] { enumColors.IndexOf("Hay", StringComparison.Ordinal), enumColors.LastIndexOf("Hay", StringComparison.Ordinal) })
+        Check(enumColorTokens.Any(s => (int?)s?["start"] == caseAt && (string?)s?["kind"] == "field"), "real compiler gives singleton enum cases the Scala field color: " + caseAt + " " + enumColorTokens.ToJsonString());
+    string aliasColors = "type Coordinate = (Int, Int)\nval point: Coordinate = (0, 1)\n";
+    var aliasColorTokens = (await Send(Request("analyze", aliasColors, 0)))["spans"]!.AsArray();
+    foreach (int aliasAt in new[] { aliasColors.IndexOf("Coordinate", StringComparison.Ordinal), aliasColors.LastIndexOf("Coordinate", StringComparison.Ordinal) })
+        Check(aliasColorTokens.Any(s => (int?)s?["start"] == aliasAt && (string?)s?["kind"] == "typeAlias"), "real compiler preserves Scala type-alias color identity: " + aliasAt + " " + aliasColorTokens.ToJsonString());
     string unicode = "val marker = \"🚜\"\nclass Café:\n  def récolte(): Int = 1\nval café = Café()\ncafé.récolte\n";
     int unicodeReference = unicode.LastIndexOf("récolte", StringComparison.Ordinal);
     var unicodeColors = await Send(Request("analyze", unicode, 0));
@@ -200,7 +267,7 @@ try
     Check((string?)interpolationFormat["source"] is string interpolated && interpolated.Contains("\n  keep ${", StringComparison.Ordinal), "formatter preserves interpolation literal whitespace: " + interpolationFormat.ToJsonString());
     var badFormat = await Send(Request("format", "val broken = (\n", 0));
     Check(badFormat["source"] == null && (string?)badFormat["error"] is string, "invalid source formatting reports an error without replacement text");
-    foreach (string name in new[] { "Direction", "Entities", "Items", "Grounds", "Unlocks", "Hats" })
+    foreach (string name in new[] { "Directions", "Entities", "Items", "Grounds", "Unlocks", "Hats" })
     {
         string enumSource = "val value = " + name + "\n";
         var hoverEnum = await Send(Request("resolve", enumSource, enumSource.IndexOf(name, StringComparison.Ordinal) + name.Length));
@@ -242,5 +309,15 @@ finally
     if (!process.WaitForExit(5000))
         process.Kill(true);
 }
+var unlocks = new HashSet<string> { "move", "north", "entities", "grass" };
+ScalaCompletionUnlocks.IsUnlocked = unlocks.Contains;
+var completionIds = new Dictionary<string, string> { ["Tree"] = "tree", ["Grass"] = "grass", ["walk"] = "move", ["Watering"] = "watering" };
+Check(ScalaCompletionUnlocks.Filter(new[] { "Tree", "Grass", "walk", "Watering", "map", "UserClass" }, completionIds).SequenceEqual(new[] { "Grass", "walk", "map", "UserClass" }), "availability removes only resolved locked game candidates");
+unlocks.Add("tree");
+Check(ScalaCompletionUnlocks.Filter(new[] { "Tree" }, completionIds).Count == 1, "upgrade purchase changes cached completion visibility immediately");
+unlocks.Clear();
+Check(ScalaCompletionUnlocks.Filter(new[] { "Tree", "walk" }, completionIds).Count == 0, "switching saves cannot reuse old completion availability");
+Check(!ScalaCompletionUnlocks.Allows("leaderboard") && !ScalaCompletionUnlocks.Allows("leaderboard_run"), "leaderboard completions remain unavailable");
+ScalaCompletionUnlocks.IsUnlocked = null;
 await ProviderChecks.Run(root, Check);
 Console.WriteLine($"Scala analysis service/provider checks passed: {checks}");

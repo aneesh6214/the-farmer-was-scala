@@ -21,7 +21,8 @@ internal sealed class SemanticColorSnapshot
     {
         Source = source;
         var tokens = ColorTokens(source).Where(t => t.Identifier).ToDictionary(t => t.Start);
-        Spans = spans.Where(s => s != null && (s.Kind == "class" || s.Kind == "object" || s.Kind == "function" || s.Kind == "builtin" || s.Kind == "value") &&
+        Spans = spans.Where(s => s != null && (s.Kind == "class" || s.Kind == "object" || s.Kind == "function" || s.Kind == "builtin" || s.Kind == "value" || s.Kind == "field" || s.Kind == "parameter" ||
+                s.Kind == "typeParameter" || s.Kind == "typeAlias" || s.Kind == "functionDeclaration" || s.Kind == "namespace") &&
             tokens.TryGetValue(s.Start, out var token) && token.Length == s.Length).Take(5000)
             .Select(s => new SemanticSpan { Start = s.Start, Length = s.Length, Kind = s.Kind }).ToArray();
     }

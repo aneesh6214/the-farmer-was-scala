@@ -6,8 +6,11 @@
   <ItemGroup>
     <Compile Include="../../src/Plugin/Editor/ScalaCompletionModel.cs" Link="ScalaCompletionModel.cs" />
     <Compile Include="../../src/Plugin/Editor/AnalysisModels.cs" Link="AnalysisModels.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaIndentation.cs" Link="ScalaIndentation.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaSyntaxPalette.cs" Link="ScalaSyntaxPalette.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaLexer.cs" Link="ScalaLexer.cs" />
     <Compile Include="../../src/Plugin/Editor/SemanticSpan.cs" Link="SemanticSpan.cs" />
+    <Compile Include="../../src/Plugin/Editor/ScalaNamedArguments.cs" Link="ScalaNamedArguments.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaSyntaxHighlighter.cs" Link="ScalaSyntaxHighlighter.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaSymbolLocation.cs" Link="ScalaSymbolLocation.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaHoverFormatter.cs" Link="ScalaHoverFormatter.cs" />

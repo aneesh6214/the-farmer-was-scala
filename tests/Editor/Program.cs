@@ -27,7 +27,7 @@ Check(braces.TryMembers("a", 76, out _) || braces.TryMembers("a", "class Box { v
 string shadow = "val harvest = 4\nharvest\n";
 var shadowModel = new ScalaCompletionModel(new Dictionary<string, string> { ["a"] = shadow });
 Check(!shadowModel.Resolve("a", shadow.LastIndexOf("harvest", StringComparison.Ordinal) + 7).IsGameBuiltin, "local shadows builtin");
-var palette = new ScalaSyntaxPalette { Keyword = "K", String = "S", Comment = "C", Number = "N", Function = "F", Class = "T", Builtin = "B", Search = "M", SelectedSearch = "X" };
+var palette = new ScalaSyntaxPalette { Keyword = "K", String = "S", Comment = "C", Number = "N", FunctionDeclaration = "F", FunctionCall = "F", TypeParameter = "T", Class = "T", Builtin = "B", Search = "M", SelectedSearch = "X" };
 string painted = ScalaSyntaxHighlighter.Colorize(shadow, palette, semanticSpans: shadowModel.Spans("a"));
 Check(!painted.Contains("<color=B>", StringComparison.Ordinal), "shadow does not inherit builtin green");
 Check(ScalaSyntaxHighlighter.Colorize("harvest()", palette).Contains("<color=B>harvest</color>", StringComparison.Ordinal), "game API keeps builtin green");

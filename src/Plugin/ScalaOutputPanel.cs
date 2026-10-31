@@ -18,6 +18,7 @@ internal static class ScalaOutputPanel
     internal static bool Active => available && EditorIntegration.Enabled;
     private static bool compilationRequested;
     internal static bool ShowCompilation => EditorIntegration.Enabled && compilationRequested;
+    internal static CompilationProgress CompilationState => Plugin.Instance?.Host?.CompilationState ?? CompilationProgress.None;
     internal static readonly FieldInfo ButtonField = AccessTools.Field(typeof(ColoredButton), "button");
     private static readonly FieldInfo IconField = AccessTools.Field(typeof(ColoredButton), "icon");
     private static readonly FieldInfo DocsPrefab = AccessTools.Field(typeof(Workspace), "docWinPrefab");
@@ -124,19 +125,26 @@ internal static class ScalaOutputPanel
         {
             if (__0 != Page || !ShowCompilation)
                 return;
-            string gray = ColorUtility.ToHtmlStringRGB(ThemeManager.Inst.Theme.code.CommentColor);
-            __result = WithCompilationHeading(__result, gray);
+            __result = WithCompilationHeading(__result, CompilationState);
         }
     }
 
-    internal static string WithCompilationHeading(string document, string gray)
+    internal static string WithCompilationHeading(string document, CompilationProgress progress)
     {
         // Keep the native link, truncated heading and live-output section.
         // This per-run status stays visible even for a cached, instant build.
         int end = document.IndexOf('\n');
         string first = end < 0 ? document : document.Substring(0, end).TrimEnd('\r');
         string rest = end < 0 ? "" : document.Substring(end + 1);
-        return first + "\n<color=#" + gray + ">Compiling...</color>\n" + rest;
+        string suffix = progress switch
+        {
+            CompilationProgress.Done => " Done",
+            CompilationProgress.Failed => " Failed",
+            CompilationProgress.Cancelled => " Cancelled",
+            _ => ""
+        };
+        // Inherit the native document's text style, just like Truncated Output.
+        return first + "\nCompiling..." + suffix + "\n" + rest;
     }
 
     [HarmonyPatch(typeof(EditorIntegration), "BeforeLoad")]
@@ -239,18 +247,21 @@ internal sealed class ScalaOutputStatus : MonoBehaviour
 {
     private DocsWindow window = null!;
     private bool headingShown;
+    private CompilationProgress progress;
     internal void Initialize(DocsWindow docs)
     {
         window = docs;
         headingShown = ScalaOutputPanel.ShowCompilation;
+        progress = ScalaOutputPanel.CompilationState;
     }
     private void LateUpdate()
     {
         if (window == null || !EditorIntegration.Enabled || window.openDoc != ScalaOutputPanel.Page)
             return;
-        if (headingShown == ScalaOutputPanel.ShowCompilation)
+        if (headingShown == ScalaOutputPanel.ShowCompilation && progress == ScalaOutputPanel.CompilationState)
             return;
         headingShown = ScalaOutputPanel.ShowCompilation;
+        progress = ScalaOutputPanel.CompilationState;
         window.LoadDoc(ScalaOutputPanel.Page);
     }
 }

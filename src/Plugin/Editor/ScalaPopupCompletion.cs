@@ -22,12 +22,16 @@ internal static class ScalaPopupCompletion
     private static readonly ConditionalWeakTable<CodeCompleter, Revision> revisions = new ConditionalWeakTable<CodeCompleter, Revision>();
     private static long revision;
     private static bool reopening;
-    private static bool Prefix(CodeCompleter __instance, CodeWindow func)
+    private static bool Prefix(CodeCompleter __instance, CodeWindow func, int startStringIndex, ref List<string> optionStrings)
     {
         if (!EditorIntegration.IsScalaWindow(func))
             return true;
         if (!func.CodeInput.readOnly && ScalaEditingContext.AllowsCompletion(func.CodeInput.text, func.CodeInput.stringPosition))
+        {
+            if (!reopening && !(startStringIndex > 0 && func.CodeInput.text[startStringIndex - 1] == '.'))
+                optionStrings = ScalaAnalysis.NativeSuggestions(func, func.CodeInput.stringPosition, optionStrings);
             return true;
+        }
         if (__instance.IsOpen)
             __instance.Close();
         return false;
@@ -52,7 +56,7 @@ internal static class ScalaPopupCompletion
         {
             if (popup == null || window == null || !revisions.TryGetValue(popup, out var active) || active.Value != token ||
                 !window.CodeInput.isFocused || window.CodeInput.readOnly || window.CodeInput.text != source || window.CodeInput.stringPosition != cursor ||
-                !ScalaEditingContext.AllowsCompletion(source, cursor) || names.Count == 0)
+                !ScalaEditingContext.AllowsCompletion(source, cursor))
                 return;
             if (popup.IsOpen && !ReferenceEquals(Owner.GetValue(popup), window))
                 return;
@@ -71,7 +75,7 @@ internal static class ScalaPopupCompletion
         if (start > 0 && start <= source.Length && (source[start - 1] == '.' || source[start - 1] == '@'))
             return names;
         var native = Options.GetValue(popup) as List<string> ?? new List<string>();
-        return native.Where(ScalaSyntaxHighlighter.IsBuiltinName).Concat(names).Concat(ScalaLexer.Keywords)
+        return ScalaCompletionUnlocks.Native(native.Where(ScalaSyntaxHighlighter.IsBuiltinName)).Concat(names).Concat(ScalaLexer.Keywords)
             .Concat(new[] { "List", "Vector", "Seq", "Map", "Set", "Option", "Some", "None", "Either", "Left", "Right", "println" })
             .Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal).ToList();
     }
@@ -109,7 +113,7 @@ internal static class ScalaPopupCompletion
             ScalaAnalysis.Complete(window, cursor, names =>
             {
                 if (__instance == null || !__instance.IsOpen || !revisions.TryGetValue(__instance, out var active) || active.Value != token ||
-                    !ReferenceEquals(Owner.GetValue(__instance), window) || window.CodeInput.text != source || window.CodeInput.stringPosition != cursor || names.Count == 0)
+                    !ReferenceEquals(Owner.GetValue(__instance), window) || window.CodeInput.text != source || window.CodeInput.stringPosition != cursor)
                     return;
                 Options.SetValue(__instance, MergeNative(__instance, source, __instance.startStringIndex, names));
                 UpdateOptions.Invoke(__instance, null);

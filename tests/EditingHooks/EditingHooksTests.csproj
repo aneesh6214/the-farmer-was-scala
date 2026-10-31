@@ -4,4 +4,5 @@
 <Compile Include="../../src/Plugin/Editor/ScalaEditingContext.cs" Link="ScalaEditingContext.cs" />
 <Compile Include="../../src/Plugin/Editor/ScalaLexer.cs" Link="ScalaLexer.cs" />
 <Compile Include="../../src/Plugin/Editor/ScalaWhitespace.cs" Link="ScalaWhitespace.cs" />
+<Compile Include="../../src/Plugin/Editor/ScalaIndentation.cs" Link="ScalaIndentation.cs" />
 </ItemGroup></Project>

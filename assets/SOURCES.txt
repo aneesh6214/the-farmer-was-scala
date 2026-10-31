@@ -21,8 +21,10 @@ an upright transform. No SVG renderer or external asset file is needed at runtim
 
 Demo video and preview
 ======================
-Recorded and supplied by Aneesh Kumar on 2026-10-30 as the-farmer-was-scala.mp4.
-The bundled MP4 is an H.264/AAC conversion at 1280x720, 30 fps, preserving the
-full recording duration and its primary audio track. The JPG is a still frame
-from that video. Both are used by the mod's offline news page. The README
-uses a separately uploaded GitHub video attachment.
+Recorded and supplied by Aneesh Kumar on 2026-10-31 as DEMO.mp4.
+The bundled MP4 is an H.264/AAC conversion at 1280x720, 60 fps, under 10 MB.
+One second was trimmed from each end. The default audio track was raised
+by 6 dB, with no clipping detected. A two-pass veryslow encode preserves detail;
+the original recording is retained separately. The JPG is a still frame from
+25 seconds into the new video. Both assets are used by the offline news page.
+The README uses a separately uploaded GitHub video attachment.

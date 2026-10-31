@@ -15,19 +15,8 @@ internal static class ScalaHighlighting
     private static bool reportedFlags;
     private static bool reportedFailure;
     private static readonly FieldInfo CodeText = AccessTools.Field(typeof(CodeWindow), "codeText");
-    internal static ScalaSyntaxPalette CreatePalette(ColorTheme theme) => new ScalaSyntaxPalette
-    {
-        Keyword = theme.code.keyword,
-        String = theme.code.@string,
-        Comment = theme.code.comment,
-        Number = theme.code.number,
-        Function = theme.code.function,
-        Class = "#70C1D4",
-        Builtin = theme.code.builtin,
-        Search = theme.ui.search_match,
-        SelectedSearch = theme.ui.search_match_current,
-        Documentation = "#" + UnityEngine.ColorUtility.ToHtmlStringRGB(UnityEngine.Color.Lerp(theme.code.CommentColor, UnityEngine.Color.white, .15f))
-    };
+    internal static ScalaSyntaxPalette CreatePalette(ColorTheme theme) => ScalaSyntaxPalette.Create(
+        theme.code.builtin, theme.code.function, theme.ui.search_match, theme.ui.search_match_current);
     private sealed class SearchState
     {
         public string Word = ""; public int Index = -1;

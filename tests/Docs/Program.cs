@@ -3,11 +3,11 @@ using FarmerScala.Editor;
 
 int checks = 0;
 void Check(bool condition, string name) { checks++; if (!condition) throw new Exception(name); }
-var palette = new ScalaSyntaxPalette { Keyword = "K", String = "S", Comment = "C", Number = "N", Function = "F", Class = "T", Builtin = "B", Search = "M", SelectedSearch = "X" };
+var palette = new ScalaSyntaxPalette { Keyword = "K", String = "S", Comment = "C", Number = "N", FunctionDeclaration = "F", FunctionCall = "F", TypeParameter = "T", Class = "T", Builtin = "B", Search = "M", SelectedSearch = "X" };
 string Format(string value, bool project = true) => ScalaHoverFormatter.Format(value, palette, project);
 string plain(string value) => Regex.Replace(value, "<[^>]*>", "");
 
-string move = Format("def move(direction: Direction): Boolean\n\nMoves one tile.\n@param direction North, East, South, or West.\n@return `true` if movement succeeds.\n@note Crossing the edge wraps.\n@example move(North)", false);
+string move = Format("def move(direction: Directions): Boolean\n\nMoves one tile.\n@param direction North, East, South, or West.\n@return `true` if movement succeeds.\n@note Crossing the edge wraps.\n@example move(North)", false);
 Check(move.Contains("</size>\n\n", StringComparison.Ordinal) && !move.Contains("line-height=50%", StringComparison.Ordinal), "title reserves a full blank line before signature");
 Check(move.Contains("<color=B>move</color>", StringComparison.Ordinal), "SDK function title and signature keep game color");
 Check(Format("def print(values: Any*): Unit\n\nShows smoke.", false).Contains("<color=B>print</color>", StringComparison.Ordinal), "game print hover uses builtin color");
@@ -54,6 +54,26 @@ Check(!unsafeReference.Contains("<size=999>", StringComparison.Ordinal) && !unsa
 string namedTypes = Format("def f(Option: Int, move: Int): Unit\n\n@param Option first\n@param move second");
 Check(namedTypes.Contains("<font=\"FiraCode-Regular SDF\">Option</font> — first", StringComparison.Ordinal) && namedTypes.Contains("<font=\"FiraCode-Regular SDF\">move</font> — second", StringComparison.Ordinal), "parameter names use plain code foreground even when spelled like a type or builtin");
 
+string wrappedProse = plain(Format("def plant(): Unit\n\nPlanting fails when\nthe tile is occupied.\n   \nAnother paragraph.\n@param thing first line\n  continued line\n\nNew parameter paragraph."));
+Check(wrappedProse.Contains("Planting fails when the tile is occupied.\n\nAnother paragraph.", StringComparison.Ordinal), "single source breaks reflow and blank lines preserve paragraphs");
+Check(wrappedProse.Contains("first line continued line\n\nNew parameter paragraph.", StringComparison.Ordinal), "parameter prose uses the same paragraph rules");
+string grouped = Format("def min(x: Int): Int\n\nUseful description.\n@group minmax\n@groupname minmax Minimum and maximum\n@groupdesc minmax internal heading\n  hidden continuation\n@groupprio minmax 1\n@param x visible argument\n@return visible result");
+Check(!plain(grouped).Contains("minmax", StringComparison.Ordinal) && !plain(grouped).Contains("hidden continuation", StringComparison.Ordinal) && plain(grouped).Contains("visible argument", StringComparison.Ordinal) && plain(grouped).Contains("visible result", StringComparison.Ordinal), "group metadata is omitted without swallowing useful tags");
+string listDoc = plain(Format("def f(): Unit\n\nA list:\n- first\n- second\n\n```scala\nval x = 1\nval y = 2\n```"));
+Check(listDoc.Contains("- first\n- second", StringComparison.Ordinal) && listDoc.Contains("val x = 1\nval y = 2", StringComparison.Ordinal), "prose reflow preserves lists and code block line breaks");
+var actualPalette = ScalaSyntaxPalette.Create("B", "Y", "M", "X");
+Check(actualPalette.Number == "#2AACB8" && actualPalette.Class == "#BCBEC4", "shared Dark palette separates teal numbers from neutral types");
+Check(ScalaSyntaxHighlighter.Colorize("val x = 2", actualPalette).Contains("<color=#2AACB8>2</color>", StringComparison.Ordinal), "code numeric literals use the shared palette");
+Check(ScalaHoverFormatter.Format("def f(): Int\n\nUse `2`.", actualPalette).Contains("<color=#2AACB8>2</color>", StringComparison.Ordinal), "hover code uses the same numeric palette");
+
+string functionDoc = ScalaHoverFormatter.Format("def custom(value: Int): Int\n\nExample: `custom(2)`.", actualPalette);
+Check(functionDoc.Contains("<color=#56A8F5>custom</color>", StringComparison.Ordinal) && !functionDoc.Contains("<color=#56A8F5>custom(2)", StringComparison.Ordinal), "hover method declaration uses the Dark declaration color; unknown snippet identifiers are not guessed");
+string memberDoc = ScalaHoverFormatter.Format("val _1: Int\n\nThe first coordinate.", actualPalette, symbolKind: "field");
+Check(memberDoc.Contains("<color=#C77DBB>_1</color>", StringComparison.Ordinal), "tuple/field hover signature uses its resolved member color");
+string parameterDoc = ScalaHoverFormatter.Format("val tile: Int", actualPalette, symbolKind: "parameter");
+Check(!parameterDoc.Contains("<color=#C77DBB>tile", StringComparison.Ordinal), "parameter hover remains ordinary foreground");
+string namedArgumentDoc = ScalaHoverFormatter.Format("def plant(crop: Int): Unit\n\nUse `plant(crop = 2)`.", actualPalette);
+Check(namedArgumentDoc.Contains("<color=#56C1D6>crop</color>", StringComparison.Ordinal) && namedArgumentDoc.Contains("<color=#2AACB8>2</color>", StringComparison.Ordinal), "documentation examples share cyan argument labels and teal numeric literals");
 string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
 string sdk = File.ReadAllText(Path.Combine(root, "sdk/game/api.scala"));
 string publicApi = sdk.Substring(sdk.IndexOf("object api:", StringComparison.Ordinal));

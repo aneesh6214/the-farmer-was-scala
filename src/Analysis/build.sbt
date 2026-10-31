@@ -1,6 +1,6 @@
 ThisBuild / scalaVersion := "3.9.0"
 name := "farmer-scala-analysis"
-version := "1.0.0"
+version := "1.0.1"
 libraryDependencies += "org.scala-lang" %% "scala3-presentation-compiler" % "3.9.0"
 // Pinned direct API: offline, no dynamic downloads, reused by the source index.
 libraryDependencies += ("org.scalameta" % "scalafmt-core_2.13" % "3.11.5")
