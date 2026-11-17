@@ -32,7 +32,7 @@ object Main:
   private var libraries: LibrarySources = null
   private val search = new SymbolSearch:
     def documentation(requestedSymbol: String, parents: ParentSymbols): Optional[SymbolDocumentation] =
-      Main.documentation.get(requestedSymbol).orElse(Option(libraries).flatMap(_.find(requestedSymbol)).map(_.documentation).filter(_.nonEmpty)).map { text => new SymbolDocumentation {
+      documentationFor(requestedSymbol).orElse(parents.parents().asScala.iterator.flatMap(documentationFor(_)).take(1).toList.headOption).map { text => new SymbolDocumentation {
         def symbol(): String = requestedSymbol
         def displayName(): String = ""
         def docstring(): String = text
@@ -44,7 +44,7 @@ object Main:
     def definitionSourceToplevels(symbol: String, uri: URI): java.util.List[String] = java.util.Collections.emptyList()
     def search(query: String, target: String, visitor: SymbolSearchVisitor): SymbolSearch.Result = SymbolSearch.Result.COMPLETE
     def searchMethods(query: String, target: String, visitor: SymbolSearchVisitor): SymbolSearch.Result = SymbolSearch.Result.COMPLETE
-  private val builtinNames = Set("harvest", "can_harvest", "swap", "plant", "move", "can_move", "till", "get_pos_x", "get_pos_y", "get_world_size", "get_entity_type", "get_ground_type", "get_time", "get_tick_count", "use_item", "get_water", "do_a_flip", "change_hat", "game_print", "quick_print", "num_items", "get_cost", "clear", "get_companion", "unlock", "num_unlocked", "measure", "random", "simulate", "set_execution_speed", "set_world_size", "spawn_drone", "num_drones", "max_drones", "wait_for", "has_finished", "pet_the_piggy", "tap", "Items", "Entities", "Grounds", "Hats", "Unlocks", "Directions", "North", "East", "South", "West")
+  private val builtinNames = Set("dig", "place", "get_pos_z", "get_hardness", "get_stability", "prospect_iron", "prospect_quartz", "push", "can_push", "jump", "hover", "get_hover", "harvest", "can_harvest", "swap", "plant", "move", "can_move", "till", "get_pos_x", "get_pos_y", "get_world_size", "get_entity_type", "get_ground_type", "get_time", "get_tick_count", "use_item", "get_water", "do_a_flip", "change_hat", "game_print", "quick_print", "num_items", "get_cost", "clear", "get_companion", "unlock", "num_unlocked", "measure", "random", "simulate", "set_execution_speed", "set_world_size", "spawn_drone", "num_drones", "max_drones", "wait_for", "has_finished", "pet_the_piggy", "tap", "Items", "Entities", "Grounds", "Hats", "Unlocks", "Directions", "North", "East", "South", "West")
   private def string(obj: JsonObject, key: String, default: String = ""): String =
     if obj.has(key) && !obj.get(key).isJsonNull then obj.get(key).getAsString else default
   private def int(obj: JsonObject, key: String, default: Int = 0): Int =
@@ -153,17 +153,21 @@ object Main:
         }
       }.groupMap(_._1)(_._2)
       documentation = documents.toList.flatMap { case (uri, (text, document)) =>
+        val comments = DocComments.in(text)
         document.occurrences.filter(_.role == SymbolOccurrence.Role.DEFINITION).flatMap { occurrence =>
-          occurrence.range.flatMap { range =>
-            val at = rawOffset(text, range.startLine, range.startCharacter)
-            val lineStart = text.lastIndexOf('\n', math.max(0, at - 1)) + 1
-            val before = text.substring(0, lineStart).trim
-            val open = before.lastIndexOf("/**")
-            if !before.endsWith("*/") || open < 0 then None
-            else Some(symbolKey(occurrence.symbol, uri) -> before.substring(open + 3, before.length - 2).linesIterator.map(_.trim.stripPrefix("*").trim).mkString("\n").trim)
-          }
+          occurrence.range.flatMap { range => comments.get(rawOffset(text, range.startLine, range.startCharacter))
+            .map(comment => symbolKey(occurrence.symbol, uri) -> comment) }
         }
       }.toMap
+
+  private def documentationFor(symbol: String, seen: Set[String] = Set.empty): Option[String] =
+    if seen(symbol) then None
+    else
+      val own = documentation.get(symbol).filter(_.nonEmpty)
+      val parent = documents.valuesIterator.flatMap(_._2.symbols).filter(_.symbol == symbol)
+        .flatMap(_.overriddenSymbols).flatMap(s => documentationFor(s, seen + symbol)).take(1).toList.headOption
+        .orElse(Option(libraries).flatMap(_.documentationFor(symbol)))
+      own.map(text => parent.fold(text)(inherited => text.replace("@inheritdoc", inherited))).orElse(parent)
 
   private def params(request: JsonObject): Params =
     val file = string(request, "file")
@@ -222,7 +226,7 @@ object Main:
     else if role == "function" && definition then "functionDeclaration" else role
 
   private def isBuiltinSymbol(symbol: String): Boolean =
-    !symbol.startsWith("local") && (symbol.startsWith("game/api.") || symbol.startsWith("game/api/") || definitions.getOrElse(symbol, Nil).exists { l =>
+    !symbol.startsWith("local") && (symbol.startsWith("game/api.") || symbol.startsWith("game/api/") || symbol.startsWith("game/MiningApi.") || definitions.getOrElse(symbol, Nil).exists { l =>
       try Paths.get(URI.create(l.getUri)).toAbsolutePath.normalize().startsWith(sdk)
       catch case _: Exception => false
     })
@@ -285,11 +289,11 @@ object Main:
     // A bare enum name resolves to its companion (.) while Scaladoc belongs
     // to the enum type (#). Retain the explicit enum signature even without docs.
     val enumDoc = if enumSignature.nonEmpty then documentation.get(symbol.stripSuffix(".") + "#") else None
-    val doc = documentation.get(symbolKey(definition.symbol(), p.uri)).orElse(enumDoc).orElse(libraryDefinition.map(_.documentation)).filter(_.nonEmpty)
+    val doc = documentationFor(symbolKey(definition.symbol(), p.uri)).orElse(enumDoc).filter(_.nonEmpty)
     val signature = enumSignature.orElse(libraryDefinition.map(_.signature).filter(_.nonEmpty)).getOrElse(signatureAndDoc.split("\n\n", 2).headOption.getOrElse(""))
     val text = doc.map(value => signature + "\n\n" + value).getOrElse(enumSignature.getOrElse(signatureAndDoc))
-    val gameFunction = if builtin && definition.symbol().startsWith("game/api.") then
-      val name = definition.symbol().stripPrefix("game/api.").takeWhile(c => c != '(' && c != '.')
+    val gameFunction = if builtin && (definition.symbol().startsWith("game/api.") || definition.symbol().startsWith("game/MiningApi.")) then
+      val name = definition.symbol().stripPrefix("game/api.").stripPrefix("game/MiningApi.").takeWhile(c => c != '(' && c != '.')
       if name.matches("[A-Za-z_][A-Za-z_0-9]*") then name else null
     else null
     val resolvedKind = semanticKind(if symbol.contains('(') then "method" else "variable", symbol,
@@ -344,7 +348,7 @@ object Main:
       if !isBuiltinSymbol(symbol) then None
       else
         val parts = symbol.stripPrefix("game/").replace('#', '.').split("\\.").filter(_.nonEmpty)
-        val apiName = if parts.headOption.contains("api") then parts.drop(1).headOption.map(_.takeWhile(_ != '(')) else None
+        val apiName = if parts.headOption.exists(Set("api", "MiningApi")) then parts.drop(1).headOption.map(_.takeWhile(_ != '(')) else None
         val family = parts.headOption.getOrElse("")
         apiName.filter(builtinNames.contains).map(n => if n == "game_print" then "print" else if n == "Directions" then "move" else n.toLowerCase)
           .orElse {
@@ -356,7 +360,22 @@ object Main:
             else None
           }
     val grouped = result.getItems.asScala.filter(i => name(i).nonEmpty).groupBy(name)
-    val values = new JsonArray(); grouped.keys.toList.sorted.foreach(values.add)
+    def category(item: org.eclipse.lsp4j.CompletionItem): Int =
+      val label = name(item)
+      val data = Option(item.getData).map(gson.toJsonTree(_)).filter(_.isJsonObject).map(_.getAsJsonObject)
+      val symbol = data.map(d => string(d, "symbol")).getOrElse("")
+      if item.getKind == org.eclipse.lsp4j.CompletionItemKind.EnumMember then 0
+      else if label.nonEmpty && !Character.isUnicodeIdentifierStart(label.head) && label.head != '_' && label.head != '`' then 3
+      else if List("scala/Any#", "scala/AnyRef#", "scala/AnyVal#", "java/lang/Object#").exists(symbol.startsWith) then 2
+      else 1
+    // Keep compiler relevance (declared/inherited members and conversions), rather
+    // than throwing it away with an alphabetical sort. Cases precede utilities;
+    // symbolic/implicit operators are last. Alphabetical order breaks remaining ties.
+    val ordered = grouped.toList.sortBy { case (label, items) =>
+      val best = items.toList.minBy(i => (category(i), Option(i.getSortText).getOrElse(label)))
+      (category(best), Option(best.getSortText).getOrElse(label), label)
+    }
+    val values = new JsonArray(); ordered.foreach { case (label, _) => values.add(label) }
     val game = new JsonObject()
     grouped.foreach { case (label, items) =>
       val keys = items.map(gameKey)

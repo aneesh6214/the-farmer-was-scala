@@ -33,7 +33,11 @@ internal sealed class RuntimeHost : IDisposable
         this.plugin = plugin;
         this.installRoot = installRoot;
         compiler = new CompilerClient(installRoot, Path.Combine(BepInEx.Paths.CachePath, "FarmerScala"), plugin.LogInfo);
-        compiler.ArtifactReady += artifact => mainQueue.Enqueue(() => ScalaAnalysis.CompilerReady(artifact));
+    }
+    internal bool IsInvolved(CodeWindow window)
+    {
+        if (pending != null) return true;
+        return active != null && active.InvolvedFiles.Contains(window.fileName);
     }
     public void ProjectChanged(ProjectSnapshot project) => compiler.Warm(project);
     internal void PruneCache() => compiler.PruneCache();
@@ -47,10 +51,16 @@ internal sealed class RuntimeHost : IDisposable
         }
         if (MainSim.Inst == null || MainSim.Inst.IsExecuting())
             throw new InvalidOperationException("Stop the current game program first.");
-        var project = EditorIntegration.CaptureProject(window);
-        var request = new PendingRun(project, window, stepping, compiler.KeepRun(project.Directory));
-        pending = request;
         CompilationState = CompilationProgress.Compiling;
+        ProjectSnapshot project;
+        PendingRun request;
+        try
+        {
+            project = EditorIntegration.CaptureProject(window);
+            request = new PendingRun(project, window, stepping, compiler.KeepRun(project.Directory));
+            pending = request;
+        }
+        catch { CompilationState = CompilationProgress.Failed; throw; }
         compiler.Compile(project).ContinueWith(task => mainQueue.Enqueue(() =>
         {
             try
@@ -78,12 +88,13 @@ internal sealed class RuntimeHost : IDisposable
                         true, (int?)diagnostic?["endLine"], (int?)diagnostic?["endColumn"]);
                     return;
                 }
-                CompilationState = CompilationProgress.Done;
                 try
                 {
+                    request.Dependencies = (result["dependencies"] as JArray)?.Values<string>().Where(n => n != null).Cast<string>().ToArray()
+                        ?? request.Project.Sources.Keys.Select(n => Path.GetFileNameWithoutExtension(n)!).ToArray();
                     StartCompiled(request, (string?)result["artifact"] ?? throw new IOException("Missing Scala.js artifact."));
                 }
-                catch (Exception error) { Stop("Start failed"); plugin.QueueOutput(error.Message); EditorIntegration.SetError(project.EntryFile, 1, 1, error.Message); }
+                catch (Exception error) { CompilationState = CompilationProgress.Failed; Stop("Start failed"); plugin.QueueOutput(error.Message); EditorIntegration.SetError(project.EntryFile, 1, 1, error.Message); }
             }
             finally { request.ReleaseCache(); }
         }), TaskScheduler.Default);
@@ -92,7 +103,10 @@ internal sealed class RuntimeHost : IDisposable
     private void StartCompiled(PendingRun request, string artifact)
     {
         if (!EditorIntegration.Enabled || request.Window == null)
+        {
+            CompilationState = CompilationProgress.Cancelled;
             return;
+        }
         var project = request.Project;
         var window = request.Window;
         bool stepping = request.Stepping;
@@ -103,6 +117,8 @@ internal sealed class RuntimeHost : IDisposable
             state = new RunState(project.Directory, project.EntryFile, artifact, window, plugin.ReportFailure, pin) { StepMode = stepping };
         }
         catch { pin.Dispose(); throw; }
+        state.InvolvedFiles.UnionWith(request.Dependencies);
+        state.SourceRevision = request.Project.Sources;
         active = state;
         try
         {
@@ -138,8 +154,9 @@ internal sealed class RuntimeHost : IDisposable
             };
             state.Listener.Start(36);
             new Thread(() => AcceptLoop(state)) { IsBackground = true, Name = "FarmerScala accept" }.Start();
-            global::Logger.Close(); // Flush output left after an earlier run before native Clear drops its writer.
-            MainSim.Inst.StartMainExecution(window, state.Session.RootNode);
+            var main = MainSim.Inst ?? throw new InvalidOperationException("The loaded farm is no longer available.");
+            main.Logger.Close(); // Flush output left after an earlier run before native Clear drops its writer.
+            main.StartMainExecution(window, state.Session.RootNode);
             EditorIntegration.BeginRun(window);
             SpawnWorker(state, 0, null);
             if (stepping)
@@ -315,7 +332,15 @@ internal sealed class RuntimeHost : IDisposable
                 else if (kind == "event")
                 {
                     string? name = (string?)message["event"];
-                    if (name == "completed")
+                    if (name == "started")
+                    {
+                        if (drone == 0)
+                            mainQueue.Enqueue(() => {
+                                if (active == run && !run.NativeStopping && !worker.Retired)
+                                    CompilationState = CompilationProgress.Done;
+                            });
+                    }
+                    else if (name == "completed")
                     {
                         worker.Completed = true;
                         run.Session.CompleteDrone(drone, message["result"]);
@@ -377,6 +402,11 @@ internal sealed class RuntimeHost : IDisposable
         var run = active;
         if (run == null)
             return;
+        if (!EditorIntegration.MatchesRun(run.SourceRevision, run.InvolvedFiles))
+        {
+            Stop("Running source changed");
+            return;
+        }
         if (run.NativeStopping)
         {
             Stop("Stopped by game");
@@ -405,6 +435,7 @@ internal sealed class RuntimeHost : IDisposable
     {
         if (active != run)
             return;
+        if (CompilationState == CompilationProgress.Compiling) CompilationState = CompilationProgress.Failed;
         plugin.QueueOutput("Scala error: " + message);
         Stop("Scala error");
         bool nativeSource = file == null || !Path.IsPathRooted(file) ||
@@ -415,7 +446,8 @@ internal sealed class RuntimeHost : IDisposable
     public void Stop(string reason)
     {
         var preparing = pending;
-        if (preparing != null) CompilationState = CompilationProgress.Cancelled;
+        if (preparing != null || active != null && CompilationState == CompilationProgress.Compiling)
+            CompilationState = CompilationProgress.Cancelled;
         pending = null;
         preparing?.ReleaseCache();
         var run = active;
@@ -452,7 +484,8 @@ internal sealed class RuntimeHost : IDisposable
     public void PrepareNativeStop()
     {
         var preparing = pending;
-        if (preparing != null) CompilationState = CompilationProgress.Cancelled;
+        if (preparing != null || active != null && CompilationState == CompilationProgress.Compiling)
+            CompilationState = CompilationProgress.Cancelled;
         pending = null;
         preparing?.ReleaseCache();
         var run = active;
@@ -493,6 +526,16 @@ internal sealed class RuntimeHost : IDisposable
             catch (Exception e) { plugin.LogError(e.Message); }
         }
     }
+    public bool PlayWhileRunning(CodeWindow window)
+    {
+        bool different = pending != null ? !ReferenceEquals(pending.Window, window) : active != null &&
+            !StringComparer.OrdinalIgnoreCase.Equals(active.Entry, window.fileName + ".scala");
+        if (!different) return ResumeIfStepping(window);
+        Stop("Switching program");
+        Run(window);
+        return true;
+    }
+
     public bool ResumeIfStepping(CodeWindow window)
     {
         var run = active;
@@ -530,6 +573,8 @@ internal sealed class RuntimeHost : IDisposable
         public readonly string Id = Guid.NewGuid().ToString("N"), Token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
         public readonly string Project, Entry, Artifact;
         public bool StepMode;
+        public System.Collections.Generic.IReadOnlyDictionary<string, string> SourceRevision = new System.Collections.Generic.Dictionary<string, string>();
+        public readonly System.Collections.Generic.HashSet<string> InvolvedFiles = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
         public volatile bool NativeStopping;
         public readonly NativeGameSession Session;
         public readonly JObject Manifest;
@@ -550,6 +595,7 @@ internal sealed class RuntimeHost : IDisposable
     }
     private sealed class PendingRun
     {
+        public string[] Dependencies = Array.Empty<string>();
         public readonly ProjectSnapshot Project;
         public readonly CodeWindow Window;
         public readonly bool Stepping;

@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>FarmerScala.Integration.Isolation</AssemblyName></PropertyGroup>
+  <ItemGroup><Reference Include="Mono.Cecil"><HintPath>$(BepInExDir)/Mono.Cecil.dll</HintPath><Private>false</Private></Reference></ItemGroup>
+</Project>

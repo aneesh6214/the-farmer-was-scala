@@ -16,4 +16,5 @@
     <Compile Include="../../src/Plugin/Editor/ScalaSymbolLocation.cs" Link="ScalaSymbolLocation.cs" />
     <Compile Include="../../src/Plugin/Editor/ScalaCompletionUnlocks.cs" Link="ScalaCompletionUnlocks.cs" />
   </ItemGroup>
+  <ItemGroup><Compile Include="../../src/Plugin/Runtime/SdkProfile.cs" Link="SdkProfile.cs" /></ItemGroup>
 </Project>

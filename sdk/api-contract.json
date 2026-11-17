@@ -1,7 +1,7 @@
 {
-  "gameCoreSha256": "B8AC8D22B614D9E48D3AFFA9A4DE9C77E799B824ED8F50DC2E494CC2DD9F9082",
-  "gameSteamBuild": 26100945,
-  "checkedDate": "2026-10-29",
+  "gameCoreSha256": "F0EFDA7C138DE8028B1769C121A4B5C17B6BB538AEAE5A67D1881E7C4EBD7D25",
+  "gameSteamBuild": 26462009,
+  "checkedDate": "2026-11-07",
   "nativeActions": [
     "can_harvest",
     "can_move",
@@ -75,10 +75,13 @@
       "Tree"
     ],
     "Grounds": [
+      "Dirt",
       "Grassland",
+      "Rock",
       "Soil"
     ],
     "Items": [
+      "Block",
       "Bone",
       "Cactus",
       "Carrot",
@@ -157,5 +160,20 @@
       "Wood_Trophy_Hat"
     ]
   },
-  "provenance": "Action names inspected from installed Core.dll decompilation; enum names copied as data from installed-resource-verified catalog produced by prior standalone POC. No game assemblies or decompiled source distributed."
+  "provenance": "Action names inspected from installed Core.dll decompilation; enum names copied as data from installed-resource-verified catalog produced by prior standalone POC. No game assemblies or decompiled source distributed.",
+  "miningNativeActions": [
+    "dig",
+    "place",
+    "get_pos_z",
+    "get_hardness",
+    "get_stability",
+    "prospect_iron",
+    "prospect_quartz",
+    "push",
+    "can_push",
+    "jump",
+    "hover",
+    "get_hover"
+  ],
+  "enumCatalogPolicy": "At launch, enum members are generated from the native game catalog and filtered using each resource's DLC flag. These arrays describe the checked-in base SDK; mining-only declarations and operations are selected separately."
 }

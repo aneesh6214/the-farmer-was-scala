@@ -20,6 +20,7 @@ Check(ScalaLineNumberLayout.ShowNumber(1,marked) && !ScalaLineNumberLayout.ShowN
 var manyRows = Enumerable.Range(1,100000).Select(i => new ScalaNumberRow(i,-i*20,-i*20+16,-i*20-4)).ToArray();
 Check(ScalaLineNumberLayout.FirstVisible(manyRows,-1000000) == 49999 && ScalaLineNumberLayout.FirstVisible(manyRows,0) == 0 && ScalaLineNumberLayout.FirstVisible(manyRows,-3000000) == manyRows.Length, "large-file viewport binary lookup includes partial rows and handles bounds");
 var window = new GameObject().AddComponent<CodeWindow>();
+window.gameObject.AddComponent<Window>();
 void WindowUpdate(CodeWindow target) => typeof(ScalaLineNumbers).GetNestedType("WindowUpdate",BindingFlags.NonPublic)!
     .GetMethod("Postfix",BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null,new object[] {target});
 window.Scala = false;
@@ -120,6 +121,7 @@ Check(Visible().Length == 2 && window.Panel.transform.sizeDelta.x == originalPan
 // Scala ownership predicate, with no dependency on editable project registration.
 Check(typeof(ScalaLineNumbers).GetNestedType("WindowUpdate",BindingFlags.NonPublic) != null, "all native Scala CodeWindows share the update hook");
 var library = new GameObject().AddComponent<CodeWindow>();
+library.gameObject.AddComponent<Window>();
 WindowUpdate(library);
 Check(library.GetComponent<ScalaLineNumberGutter>() != null, "unregistered library CodeWindow receives the same gutter");
 ScalaLineNumbers.Clear();

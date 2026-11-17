@@ -10,7 +10,7 @@ using HarmonyLib;
 
 namespace FarmerScala;
 
-[BepInPlugin("dev.farmerscala", "Farmer Scala", "1.0.1")]
+[BepInPlugin("dev.farmerscala", "Farmer Scala", "1.1.0")]
 public sealed class Plugin : BaseUnityPlugin
 {
     public static Plugin? Instance
@@ -35,15 +35,16 @@ public sealed class Plugin : BaseUnityPlugin
             using (var sha = SHA256.Create())
             using (var file = File.OpenRead(core))
                 digest = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "");
-            const string supported = "B8AC8D22B614D9E48D3AFFA9A4DE9C77E799B824ED8F50DC2E494CC2DD9F9082";
+            const string supported = "F0EFDA7C138DE8028B1769C121A4B5C17B6BB538AEAE5A67D1881E7C4EBD7D25";
             if (digest != supported)
                 throw new NotSupportedException("This game build has not been verified. Core.dll SHA256=" + digest);
             Host = new RuntimeHost(this, root);
             EditorIntegration.Initialize(() => Host.IsRunning, window => Host.Run(window),
                 () => Host.Stop("Stopped by editor"), LogInfo, Path.Combine(Paths.CachePath, "FarmerScala"));
             EditorIntegration.ParseOverride = Host.ParseSimulationWindow;
-            EditorIntegration.PlayWhileRunning = Host.ResumeIfStepping;
+            EditorIntegration.PlayWhileRunning = Host.PlayWhileRunning;
             EditorIntegration.StepRequested = Host.Step;
+            EditorIntegration.IsInvolvedInRun = Host.IsInvolved;
             EditorIntegration.LoadFailure = SaveLanguageMenu.ShowLoadError;
             EditorIntegration.ProjectChanged += Host.ProjectChanged;
             harmony = new Harmony("dev.farmerscala");
@@ -58,16 +59,28 @@ public sealed class Plugin : BaseUnityPlugin
             LogError("Farmer Scala disabled: " + e);
         }
     }
+    private void Start()
+    {
+        if (!ready) return;
+        try { Game.MiningSupport.Initialize(Path.GetDirectoryName(Info.Location)!); }
+        catch (Exception error) { ready = false; harmony?.UnpatchSelf(); Host.Dispose(); LogError("Scala SDK could not initialize: " + error); }
+    }
     private void Update()
     {
         if (!ready)
             return;
         try
         {
+            if (!Game.MiningSupport.Ready)
+            {
+                Game.MiningSupport.Initialize(Path.GetDirectoryName(Info.Location)!);
+                if (!Game.MiningSupport.Ready) return;
+            }
             EditorIntegration.Tick();
             ScalaAnalysis.Tick();
             ScalaDiagnostics.Tick();
             ScalaEditorTools.Tick();
+            ScalaParentheses.Tick();
             Host.Tick();
             bool wroteNativeOutput = false;
             try
@@ -78,7 +91,7 @@ public sealed class Plugin : BaseUnityPlugin
                     if (MainSim.Inst != null)
                     {
                         wroteNativeOutput = true;
-                        global::Logger.Log(line);
+                        MainSim.Inst.Logger.Log(line);
                     }
                 }
             }
@@ -90,7 +103,7 @@ public sealed class Plugin : BaseUnityPlugin
                 // its writer reference without disposing an existing handle.
                 var main = MainSim.Inst;
                 if (wroteNativeOutput && !Host.IsRunning && (main == null || !main.IsExecuting()))
-                    global::Logger.Close();
+                    MainSim.Inst?.Logger.Close();
             }
         }
         catch (Exception e) { ReportFailure("Scala mod stopped after an internal error: " + e.Message); LogError(e.ToString()); Host.Stop("Internal error"); }

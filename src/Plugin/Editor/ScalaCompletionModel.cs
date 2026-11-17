@@ -375,13 +375,42 @@ internal sealed class ScalaCompletionModel
     }
     private static string Documentation(string source, int start)
     {
-        string prefix = source.Substring(0, start).TrimEnd();
-        if (!prefix.EndsWith("*/", StringComparison.Ordinal))
-            return "";
-        int open = prefix.LastIndexOf("/**", StringComparison.Ordinal);
-        if (open < 0)
-            return "";
-        string body = prefix.Substring(open + 3, prefix.Length - open - 5);
+        var tokens = ScalaLexer.Lex(source.Substring(0, start));
+        int comment = tokens.FindLastIndex(t => t.Kind == ScalaTokenKind.Comment && t.Text.StartsWith("/**", StringComparison.Ordinal));
+        if (comment < 0) return "";
+        var prefix = tokens.Skip(comment + 1).Where(t => t.Kind != ScalaTokenKind.Newline && t.Kind != ScalaTokenKind.Comment).ToList();
+        var modifiers = new HashSet<string> { "override", "private", "protected", "final", "abstract", "sealed", "implicit", "lazy", "inline", "transparent", "open", "opaque", "erased" };
+        for (int i = 0; i < prefix.Count;)
+        {
+            if (modifiers.Contains(prefix[i].Text))
+            {
+                i++;
+                if (i < prefix.Count && prefix[i].Text == "[")
+                {
+                    while (i < prefix.Count && prefix[i].Text != "]") i++;
+                    if (i == prefix.Count) return "";
+                    i++;
+                }
+            }
+            else if (prefix[i].Text == "@")
+            {
+                i++;
+                if (i == prefix.Count || !prefix[i].Identifier) return "";
+                i++;
+                while (i + 1 < prefix.Count && prefix[i].Text == "." && prefix[i + 1].Identifier) i += 2;
+                if (i < prefix.Count && prefix[i].Text == "(")
+                {
+                    int depth = 0;
+                    do { if (prefix[i].Text == "(") depth++; else if (prefix[i].Text == ")") depth--; i++; }
+                    while (i < prefix.Count && depth > 0);
+                    if (depth != 0) return "";
+                }
+            }
+            else return ""; // Another declaration/expression owns the earlier comment.
+        }
+        string text = tokens[comment].Text;
+        if (!text.EndsWith("*/", StringComparison.Ordinal)) return "";
+        string body = text.Substring(3, text.Length - 5);
         return string.Join("\n", body.Split('\n').Select(l => l.Trim().TrimStart('*').TrimStart())).Trim();
     }
     private Symbol? Lookup(File file, Scope scope, string name, int depth = 0)
@@ -528,7 +557,9 @@ internal sealed class ScalaCompletionModel
         var type = receiver == null ? null : ValueType(file, receiver, 0);
         if (type == null)
             return false;
-        members = Members(files[type.File], type, new HashSet<Symbol>()).Select(s => s.Name).Distinct(StringComparer.Ordinal).OrderBy(s => s, StringComparer.Ordinal).ToList();
+        members = Members(files[type.File], type, new HashSet<Symbol>())
+            .OrderBy(s => ReferenceEquals(s.Scope, type.Body) ? 0 : 1)
+            .ThenBy(s => s.Name, StringComparer.Ordinal).Select(s => s.Name).Distinct(StringComparer.Ordinal).ToList();
         return true;
     }
     public List<string> Complete(string fileName, int cursor)

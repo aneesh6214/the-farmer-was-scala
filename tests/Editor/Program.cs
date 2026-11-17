@@ -16,6 +16,7 @@ Check(farm.HoverText?.Contains("def farm()", StringComparison.Ordinal) == true, 
 Check(farm.HoverText?.Contains("Harvest this field.", StringComparison.Ordinal) == true, "Scaladoc hover");
 Check(model.TryMembers("f0", source.IndexOf("other.", StringComparison.Ordinal) + 6, out var inherited), "typed instance members resolve");
 Check(new[] { "farm", "name", "age", "run" }.All(inherited.Contains), "inherited and declared members");
+Check(inherited.IndexOf("run") < inherited.IndexOf("farm"), "local fallback prioritizes declared members over inherited members");
 Check(model.TryMembers("f0", source.IndexOf("p.\n", StringComparison.Ordinal) + 2, out var point) && point.Contains("x") && point.Contains("y"), "case class constructor fields");
 var constructor = model.Resolve("f0", source.IndexOf("D()", StringComparison.Ordinal) + 1);
 Check(constructor.Definition?.File == "main", "import alias class navigation");
@@ -59,6 +60,23 @@ try
     var raced = store.Snapshot(save, "f0", new Dictionary<string, string> { ["f0"] = "clicked revision" });
     Check(raced.Sources["helper"] == "def helper(): Int = 42" && File.Exists(Path.Combine(raced.Directory, "helper.scala")), "untracked external Scala module participates in snapshot fingerprint");
     Check(raced.Sources["f0"] == "clicked revision" && File.ReadAllText(Path.Combine(raced.Directory, "f0.scala")) == "clicked revision", "editor snapshot remains exact across external disk edit");
+    // Real Windows file sharing: a short-lived reader must not lose an edit,
+    // while a persistent lock must fail without damaging the previous revision.
+    string metadata = Path.Combine(SourceStore.ProjectRoot(save), "project.json");
+    using (var readerLock = File.Open(metadata, FileMode.Open, FileAccess.Read, FileShare.Read))
+    {
+        var release = Task.Run(() => { Thread.Sleep(40); readerLock.Dispose(); });
+        store.SaveSources(save, "save", true, new Dictionary<string, string> { ["f0"] = "after sharing lock" });
+        release.GetAwaiter().GetResult();
+    }
+    Check(File.ReadAllText(metadata).Contains("f0"), "temporary Windows sharing lock does not prevent atomic metadata replacement");
+    string previousMetadata = File.ReadAllText(metadata);
+    bool sharingFailure = false;
+    using (var readerLock = File.Open(metadata, FileMode.Open, FileAccess.Read, FileShare.Read))
+        try { store.SaveSources(save, "save", true, new Dictionary<string, string> { ["f0"] = "persistent lock" }); }
+        catch (IOException) { sharingFailure = true; }
+    Check(sharingFailure && File.ReadAllText(metadata) == previousMetadata, "persistent sharing lock preserves the previous metadata and reports failure");
+    Check(!Directory.GetFiles(SourceStore.ProjectRoot(save), "*.tmp", SearchOption.AllDirectories).Any(), "failed atomic writes clean up their test-owned temporary files");
     string caseSave = Path.Combine(testRoot, "case-rename");
     store.InitializeLanguage(caseSave, "case-rename", SaveLanguage.NativeScala);
     store.SaveSources(caseSave, "case-rename", true, new Dictionary<string, string> { ["main"] = "harvest()" });

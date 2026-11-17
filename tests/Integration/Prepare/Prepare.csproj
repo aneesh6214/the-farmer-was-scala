@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../Isolation/Patcher.cs" Link="Patcher.cs" />
+    <Reference Include="Mono.Cecil"><HintPath>$(BepInExDir)/Mono.Cecil.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

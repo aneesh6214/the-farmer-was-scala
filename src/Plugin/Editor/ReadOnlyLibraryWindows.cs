@@ -52,7 +52,7 @@ internal static class ReadOnlyLibraryWindows
             play.gameObject.SetActive(false);
         if (Step.GetValue(window) is Component step)
             step.gameObject.SetActive(false);
-        window.Load(target.Source!);
+        window.Load(target.Source!, readOnly: true);
         // The registry identity is private; show only the actual source name.
         if (NameInput.GetValue(window) is TMP_InputField caption)
             caption.text = target.File + ".scala (read only)";

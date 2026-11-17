@@ -30,7 +30,7 @@ object Entities:
   * Ground types returned by ground sensing.
   */
 enum Grounds extends GameValue:
-  case Grassland, Soil
+  case Dirt, Grassland, Rock, Soil
   def family: String = "Grounds"
 
   def name: String = toString
@@ -42,7 +42,7 @@ object Grounds:
   * Inventory item types used by costs, item counts and item actions.
   */
 enum Items extends GameValue:
-  case Bone, Cactus, Carrot, Fertilizer, Gold, Hay, Piggy, Power, Pumpkin, Water, Weird_Substance
+  case Block, Bone, Cactus, Carrot, Fertilizer, Gold, Hay, Piggy, Power, Pumpkin, Water, Weird_Substance
   case Wood
   def family: String = "Items"
 

@@ -24,6 +24,7 @@ public sealed class ScalaEngine
     private readonly Stopwatch clock = Stopwatch.StartNew();
     private JsValue? captured;
     private bool pauseRequested;
+    private bool started;
     private string? lastPaused;
     private EditorLocation? lastUserLocation;
 
@@ -80,6 +81,7 @@ public sealed class ScalaEngine
         if (journal.StageCount == 0)
         {
             engine.Execute(script, "main.js");
+            NotifyStarted();
             return ParseResult(InvokeEntry());
         }
         journal.BeginStage(0);
@@ -217,6 +219,13 @@ public sealed class ScalaEngine
         }
     }
 
+    private void NotifyStarted()
+    {
+        if (started) return;
+        started = true;
+        transport.Event("started");
+    }
+
     private StepMode OnPoint(object sender, DebugInformation info)
     {
         if (journal.IsReplaying)
@@ -226,6 +235,7 @@ public sealed class ScalaEngine
         EditorLocation? location = mappings.Map(info.Location.Start.Line, info.Location.Start.Column);
         if (location is null)
             return StepMode.None;
+        NotifyStarted();
         lastUserLocation = location;
         string key = location.File + ":" + location.Line + ":" + location.Column;
         bool shouldPause;

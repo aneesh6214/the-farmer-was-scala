@@ -54,12 +54,15 @@ var progressType = assembly.GetType("FarmerScala.Runtime.CompilationProgress", t
 string Document(string source, string progress = "Compiling") => (string)heading.Invoke(null, new object[] { source, Enum.Parse(progressType, progress) })!;
 const string outputDoc = "For the full output see [output.txt](output.txt).\nTruncated Output:\n\n<output>";
 string withStatus = Document(outputDoc);
-Check(withStatus == "For the full output see [output.txt](output.txt).\nCompiling...\nTruncated Output:\n\n<output>", "compilation line inherits the same native text style as truncated output");
-Check(Document("Full output\r\nTruncated Output:\r\n<output>").Contains("Compiling...\nTruncated Output:\r\n<output>", StringComparison.Ordinal), "compilation heading preserves CRLF document body");
+Check(withStatus == "For the full output see [output.txt](output.txt).\nCompiling...\n\n<output>", "pending startup shows Compiling and keeps live output without the premature truncated heading");
+Check(Document("Full output\r\nTruncated Output:\r\n<output>") == "Full output\nCompiling...\n<output>", "pending startup removes the CRLF heading while preserving output markup");
 Check(Document("Full output") == "Full output\nCompiling...\n", "single-line localized document keeps its full-output link");
 Check(Document(outputDoc, "Done").Contains("\nCompiling... Done\nTruncated Output:", StringComparison.Ordinal), "successful compilation retains its line and appends Done");
 Check(Document(outputDoc, "Failed").Contains("Compiling... Failed", StringComparison.Ordinal), "failed compilation is not presented as successful");
 Check(Document(outputDoc, "Cancelled").Contains("Compiling... Cancelled", StringComparison.Ordinal), "stopped compilation no longer looks pending");
+Check(Document(outputDoc, "None") == "For the full output see [output.txt](output.txt).\n\n<output>", "before Play neither compilation nor truncated headings appear");
+Check(!Document(outputDoc, "Failed").Contains("Truncated Output:") && Document(outputDoc, "Failed").Contains("<output>"), "startup failures remain visible without claiming execution began");
+Check(Document("Vollständige Ausgabe\nGekürzte Ausgabe:\n{{output}}") == "Vollständige Ausgabe\nCompiling...\n{{output}}", "pending headings are removed structurally without English-only matching");
 using var terminalStream = assembly.GetManifestResourceStream("FarmerScala.Terminal.png")!;
 using var terminalBytes = new MemoryStream();
 terminalStream.CopyTo(terminalBytes);

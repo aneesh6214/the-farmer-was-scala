@@ -23,6 +23,7 @@ final class LibrarySources(directory: Path):
     finally files.close()
   else Nil
   private val indexed = scala.collection.mutable.HashSet.empty[Entry]
+  private val inheritedOwners = scala.collection.mutable.HashMap.empty[String, List[String]]
   private val definitions = scala.collection.mutable.HashMap.empty[String, Definition]
 
   private def read(entry: Entry): String =
@@ -63,22 +64,34 @@ final class LibrarySources(directory: Path):
       if matches.size == 1 then matches.headOption else None
     }
 
+  def documentationFor(symbol: String, seen: Set[String] = Set.empty): Option[String] =
+    if seen(symbol) then None
+    else
+      val own = find(symbol).map(_.documentation).filter(_.nonEmpty)
+      val split = symbol.lastIndexOf('#')
+      val inherited = if split < 0 then None else
+        inheritedOwners.getOrElse(symbol.take(split + 1), Nil).iterator
+          .flatMap(owner => documentationFor(owner + symbol.drop(split + 1), seen + symbol)).take(1).toList.headOption
+      own.map(text => inherited.fold(text)(parent => text.replace("@inheritdoc", parent))).orElse(inherited)
+
   private def index(entry: Entry): Unit =
     if !indexed.add(entry) then return
     val text = read(entry)
     if text.length > 524288 then return
-    val input = Input.VirtualFile(entry.name, text)
+    // The bundled compiler understands capture annotations newer than the
+    // source-index parser. Mask only that type syntax, preserving every offset
+    // and retaining the original text in the read-only source window.
+    val captures = "\\^\\{[^}]*\\}".r.replaceAllIn(text, m => m.matched.map(c => if c == '\n' || c == '\r' then c else ' '))
+    val compatible = "(?<=[\\p{L}\\p{N}_\\]\\)])\\^(?![=])".r.replaceAllIn(captures, " ")
+    val input = Input.VirtualFile(entry.name, compatible)
     val parsed = dialects.Scala3(input).parse[Source].toOption.orElse(dialects.Scala213(input).parse[Source].toOption)
     parsed.foreach { source =>
       val overloads = scala.collection.mutable.HashMap.empty[String, Int]
       val macros = "(?m)^\\s*\\*?\\s*@define\\s+(\\w+)\\s+(.+)$".r.findAllMatchIn(text).map(m => m.group(1) -> m.group(2).trim).toMap
+      val precedingDoc = DocComments.preceding(text)
       def doc(at: Int): String =
-        val prefix = text.take(at).trim
-        val open = prefix.lastIndexOf("/**")
-        if open < 0 || !prefix.endsWith("*/") then ""
-        else
-          val raw = prefix.substring(open + 3, prefix.length - 2).linesIterator.map(_.trim.stripPrefix("*").trim).mkString("\n").trim
-          "\\$(\\w+)".r.replaceAllIn(raw, m => java.util.regex.Matcher.quoteReplacement(macros.getOrElse(m.group(1), m.group(1))))
+        val raw = precedingDoc(at)
+        "\\$(\\w+)".r.replaceAllIn(raw, m => java.util.regex.Matcher.quoteReplacement(macros.getOrElse(m.group(1), m.group(1))))
       def add(symbol: String, name: Name, tree: Tree): Unit =
         val id = entry.archive.getFileName.toString + "!/" + entry.name
         val signature = tree match
@@ -93,23 +106,31 @@ final class LibrarySources(directory: Path):
         val key = owner + name.value
         val count = overloads.getOrElse(key, 0); overloads(key) = count + 1
         add(key + (if count == 0 then "()." else s"(+$count)."), name, tree)
+      def rememberParents(owner: String, enclosing: String, template: Template): Unit =
+        def base(t: Type): String = t match
+          case Type.Apply(tpe, _) => base(tpe)
+          case _ => t.syntax
+        inheritedOwners(owner) = template.inits.reverse.map { init =>
+          val name = base(init.tpe).stripPrefix("_root_.")
+          (if name.contains('.') then name.replace('.', '/') else enclosing + name) + "#"
+        }
       def visit(tree: Tree, owner: String): Unit = tree match
         case pkg: Pkg => pkg.stats.foreach(visit(_, owner + pkg.ref.syntax.replace('.', '/') + "/"))
         case value: Pkg.Object =>
           val next = owner + value.name.value + "/package."
-          add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
+          rememberParents(next, owner, value.templ); add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
         case value: Defn.Class =>
           val next = owner + value.name.value + "#"
-          add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
+          rememberParents(next, owner, value.templ); add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
         case value: Defn.Trait =>
           val next = owner + value.name.value + "#"
-          add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
+          rememberParents(next, owner, value.templ); add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
         case value: Defn.Object =>
           val next = owner + value.name.value + "."
-          add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
+          rememberParents(next, owner, value.templ); add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
         case value: Defn.Enum =>
           val next = owner + value.name.value + "#"
-          add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
+          rememberParents(next, owner, value.templ); add(next, value.name, value); value.templ.stats.foreach(visit(_, next))
         case value: Defn.Def => method(owner, value.name, value)
         case value: Decl.Def => method(owner, value.name, value)
         case value: Defn.Type => add(owner + value.name.value + "#", value.name, value)

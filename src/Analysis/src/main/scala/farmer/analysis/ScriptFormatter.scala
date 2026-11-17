@@ -18,6 +18,13 @@ object ScriptFormatter:
     docstrings.style = Asterisk
     docstrings.oneline = unfold
     docstrings.blankFirstLine = unfold
+    rewrite.rules = [Imports]
+    rewrite.imports.sort = ascii
+    rewrite.imports.selectors = fold
+    rewrite.imports.removeRedundantSelectors = true
+    rewrite.imports.groups = [["java[.].*", "javax[.].*", "scala[.].*" ]]
+    rewrite.imports.contiguousGroups = only
+    rewrite.imports.sortCatchallGroup = tail
     rewrite.scala3.convertToNewSyntax = false
     rewrite.scala3.removeOptionalBraces = no
     """).get)

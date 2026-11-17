@@ -87,10 +87,11 @@ internal static class ScalaNews
                 ToolbarIcons.Assign(icon, nativeIcon, Logo(nativeIcon));
                 var anchor = copy.AddComponent<ScalaNewsAnchor>();
                 anchor.Original = original.GetComponent<RectTransform>();
-                var group = original.transform.parent.GetComponent<HorizontalOrVerticalLayoutGroup>();
-                anchor.LayoutDriven = group != null && group.enabled;
-                if (anchor.LayoutDriven)
-                    copy.transform.SetSiblingIndex(original.transform.GetSiblingIndex());
+                anchor.DlcButtons = UnityEngine.Object.FindObjectsByType<DLCStatusButton>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+                // The native row keeps ownership of its own buttons. Position
+                // ours from their final bounds, even across different parents.
+                var layout = copy.GetComponent<LayoutElement>() ?? copy.AddComponent<LayoutElement>();
+                layout.ignoreLayout = true;
                 copy.SetActive(true);
                 anchor.Align();
                 workspace.StartCoroutine(OpenOnFirstLaunch(workspace));
@@ -207,10 +208,13 @@ internal static class ScalaNews
 internal sealed class ScalaNewsAnchor : MonoBehaviour
 {
     internal RectTransform? Original;
-    internal bool LayoutDriven;
+    internal DLCStatusButton[] DlcButtons = Array.Empty<DLCStatusButton>();
+    private readonly Vector3[] corners = new Vector3[4];
+    private readonly List<(float Left, float Bottom, float Right, float Top)> occupied = new List<(float, float, float, float)>();
+
     internal void Align()
     {
-        if (LayoutDriven || Original == null)
+        if (Original == null || !(transform.parent is RectTransform parent))
             return;
         var rect = (RectTransform)transform;
         rect.anchorMin = Original.anchorMin;
@@ -218,8 +222,33 @@ internal sealed class ScalaNewsAnchor : MonoBehaviour
         rect.pivot = Original.pivot;
         rect.sizeDelta = Original.sizeDelta;
         rect.localScale = Original.localScale;
-        float width = Original.rect.width * Original.localScale.x;
-        rect.anchoredPosition = Original.anchoredPosition + Vector2.left * (width + Mathf.Max(8f, width * .2f));
+        rect.localRotation = Original.localRotation;
+        var news = Bounds(Original, parent);
+        if (news.Right <= news.Left)
+            return; // Wait for the native canvas/layout to acquire its size.
+        occupied.Clear();
+        foreach (var button in DlcButtons)
+            if (button != null && button.gameObject.activeInHierarchy && button.transform is RectTransform target)
+                occupied.Add(Bounds(target, parent));
+        var group = Original.parent.GetComponent<HorizontalOrVerticalLayoutGroup>();
+        float gap = group != null && group.enabled ? Mathf.Max(0f, group.spacing) : Mathf.Max(8f, (news.Right - news.Left) * .2f);
+        gap = NewsButtonPlacement.NativeGap(news, occupied, gap);
+        rect.anchoredPosition = Original.anchoredPosition + new Vector2(NewsButtonPlacement.Offset(news, occupied, gap), 0f);
     }
+
+    private (float Left, float Bottom, float Right, float Top) Bounds(RectTransform target, RectTransform parent)
+    {
+        target.GetWorldCorners(corners);
+        Vector3 first = parent.InverseTransformPoint(corners[0]);
+        float left = first.x, right = first.x, bottom = first.y, top = first.y;
+        for (int i = 1; i < corners.Length; i++)
+        {
+            Vector3 point = parent.InverseTransformPoint(corners[i]);
+            left = Mathf.Min(left, point.x); right = Mathf.Max(right, point.x);
+            bottom = Mathf.Min(bottom, point.y); top = Mathf.Max(top, point.y);
+        }
+        return (left, bottom, right, top);
+    }
+
     private void LateUpdate() => Align();
 }

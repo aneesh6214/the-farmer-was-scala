@@ -115,9 +115,11 @@ internal static class ScalaHighlighting
                 bool inputRichText = window.CodeInput.richText;
                 var link = navigation.GetOrCreateValue(window);
                 bool currentLink = link.Source == __0 && link.Project == EditorIntegration.ProjectDirectory;
+                var pair = window.CodeInput.isFocused && window.CodeInput.selectionStringAnchorPosition == window.CodeInput.selectionStringFocusPosition
+                    ? ScalaParenthesisMatch.Find(__0, window.CodeInput.stringPosition) : (-1, -1);
                 __result = ScalaSyntaxHighlighter.Colorize(__0, CreatePalette(__1), __2, __3,
                     escapeMarkup: !inputRichText, semanticSpans: ScalaAnalysis.Spans(window),
-                    navigationStart: currentLink ? link.Start : -1, navigationLength: currentLink ? link.Length : 0);
+                    navigationStart: currentLink ? link.Start : -1, navigationLength: currentLink ? link.Length : 0, matchingFirst: pair.Item1, matchingSecond: pair.Item2);
                 if (!reportedFlags)
                 {
                     reportedFlags = true;

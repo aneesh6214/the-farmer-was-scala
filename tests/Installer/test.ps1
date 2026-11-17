@@ -32,7 +32,7 @@ function Payload([string]$Name, [string]$Version) {
         'toolchain/sbt-launch-1.11.7.jar','toolchain/repositories',
         'tools/compiler/FarmerScala.Compiler.dll','tools/compiler/FarmerScala.Compiler.deps.json','tools/compiler/FarmerScala.Compiler.runtimeconfig.json',
         'tools/worker/FarmerScala.Worker.dll','tools/worker/FarmerScala.Worker.deps.json','tools/worker/FarmerScala.Worker.runtimeconfig.json',
-        'tools/analysis/classpath.txt','tools/analysis/fake-analysis.jar',
+        'tools/analysis/classpath.txt','tools/analysis/editor-classpath.json','tools/analysis/fake-analysis.jar',
         'sdk/game/api.scala','sdk/game/WireCodec.scala','sdk/game/GameEnums.scala',
         'assets/the-farmer-was-scala.mp4','assets/the-farmer-was-scala.jpg'
     )) { Put $folder $file ($Version + ':' + $file) }

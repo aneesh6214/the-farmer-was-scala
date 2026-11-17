@@ -50,7 +50,12 @@ if (args.Contains("--artifact"))
     writer.WriteLine(hello.ToString(Newtonsoft.Json.Formatting.None));
     if (reader.ReadLine() == null)
         return;
-    if (File.ReadAllText(args[Array.IndexOf(args, "--artifact") + 1]) == "hold")
+    string source = File.ReadAllText(args[Array.IndexOf(args, "--artifact") + 1]);
+    if (source == "retry") Thread.Sleep(250); // Compilation is complete, execution startup is not.
+    var started = (JObject)identity.DeepClone();
+    started["kind"] = "event"; started["event"] = "started";
+    writer.WriteLine(started.ToString(Newtonsoft.Json.Formatting.None));
+    if (source == "hold")
     {
         while (reader.ReadLine() != null)
         {
@@ -133,7 +138,9 @@ host.Run(window);
 await PumpUntil(() => !host.IsRunning);
 File.WriteAllText(Path.Combine(EditorIntegration.Project.Directory, "repaired"), "cache repaired");
 host.Run(window);
-await PumpUntil(() => MainSim.Inst.Starts == 1 && !host.IsRunning);
+await PumpUntil(() => MainSim.Inst.Starts == 1);
+Check(!host.IsCompiling && host.CompilationState == CompilationProgress.Compiling, "finished compilation stays pending while the real worker initializes");
+await PumpUntil(() => !host.IsRunning);
 Check(host.CompilationState == CompilationProgress.Done, "successful compilation retains Done after execution completes");
 Check(MainSim.Inst.Starts == 1, "an unchanged source can retry after a transient compiler failure is repaired");
 Source("valid");
@@ -230,4 +237,14 @@ host.Tick();
 Check(!host.IsRunning && EditorIntegration.Error == "helper.scala:9:5:late plant failure", "late native side-effect fault reaches the editor with its cross-file Scala call location");
 FarmerScala.Game.NativeGameSession.InjectedFault = null;
 FarmerScala.Game.NativeGameSession.InjectedLocation = null;
+Source("hold");
+host.Run(window);
+await PumpUntil(() => MainSim.Inst.Starts == 5 && host.IsRunning);
+Check(host.IsInvolved(window) && !host.IsInvolved(new CodeWindow { fileName = "Scratch" }), "running dependency set distinguishes the entry from unrelated windows");
+host.Tick();
+Check(host.IsRunning, "unrelated source activity leaves the current worker running");
+EditorIntegration.RevisionMatches = false;
+host.Tick();
+Check(!host.IsRunning, "changed or removed running sources stop the worker before stale source mapping is used");
+EditorIntegration.RevisionMatches = true;
 Console.WriteLine(checks + " production lifecycle checks passed (native Unity calls adapted).");

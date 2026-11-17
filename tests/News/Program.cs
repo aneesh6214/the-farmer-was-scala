@@ -69,4 +69,26 @@ Check(new[] { "container", "markdownPrefab", "titleWorkspace" }.All(name => type
 Check(typeof(TitleWindow).GetMethod("LinkCalled", PrivateInstance) != null, "embedded page retains the native news link handler");
 Check(typeof(ColoredButton).GetField("icon", BindingFlags.NonPublic | BindingFlags.Instance) != null && typeof(ColoredButton).GetField("button", BindingFlags.NonPublic | BindingFlags.Instance) != null, "native button retains expected icon and event fields");
 Check(typeof(TitleWorkspace).GetMethod("PositionNewWindow", BindingFlags.NonPublic | BindingFlags.Instance) != null, "mod news can reuse the exact native placement routine");
+var placementType = assembly.GetType("FarmerScala.NewsButtonPlacement", true)!;
+var offsetMethod = placementType.GetMethod("Offset", BindingFlags.NonPublic | BindingFlags.Static)!;
+float Offset((float, float, float, float) newsBounds, (float, float, float, float)[] buttons, float gap = 10f)
+    => (float)offsetMethod.Invoke(null, new object[] { newsBounds, buttons, gap })!;
+var newsBounds = (100f, 0f, 150f, 50f);
+Check(Offset(newsBounds, Array.Empty<(float, float, float, float)>()) == -60f, "without DLC icons Scala remains one evenly spaced slot left of news");
+Check(Offset(newsBounds, new[] { (40f, 0f, 90f, 50f) }) == -120f, "the native mining hat retains its slot and Scala moves to its left");
+Check(Offset(newsBounds, new[] { (-20f, 0f, 30f, 50f), (40f, 0f, 90f, 50f) }) == -180f, "an unsorted row of native buttons is cleared completely");
+Check(Offset(newsBounds, new[] { (-500f, 0f, -450f, 50f) }) == -60f, "a DLC icon in the opposite corner does not displace Scala off-screen");
+Check(Offset(newsBounds, new[] { (40f, 60f, 90f, 110f) }) == -60f, "buttons in another row do not affect the news row");
+Check(Offset(newsBounds, new[] { (160f, 0f, 210f, 50f) }) == -60f, "a native button right of news keeps its existing spacing");
+Check(Offset((200f, 0f, 280f, 80f), new[] { (80f, 0f, 184f, 80f) }, 16f) == -216f, "scaled and differently sized native icons preserve the configured gap");
+var gapMethod = placementType.GetMethod("NativeGap", BindingFlags.NonPublic | BindingFlags.Static)!;
+float NativeGap((float, float, float, float) bounds, (float, float, float, float)[] buttons, float fallback = 10f)
+    => (float)gapMethod.Invoke(null, new object[] { bounds, buttons, fallback })!;
+var unequal = new[] { (20f, 0f, 70f, 50f) };
+Check(NativeGap(newsBounds, unequal) == 30f && Offset(newsBounds, unequal, NativeGap(newsBounds, unequal)) == -160f,
+    "Scala uses the native DLC/news gap rather than its smaller estimated gap");
+Check(NativeGap(newsBounds, new[] { (20f, 70f, 70f, 120f) }) == 10f, "another row cannot supply menu spacing");
+Check(NativeGap(newsBounds, new[] { (-500f, 0f, -450f, 50f) }) == 10f, "a distant DLC button does not create a giant gap");
+Check(NativeGap(newsBounds, Array.Empty<(float, float, float, float)>()) == 10f, "without native siblings the fallback gap remains available");
+Check(NativeGap(newsBounds, new[] { (150f, 0f, 200f, 50f) }) == 0f, "a native layout with zero gap is preserved");
 Console.WriteLine($"{checks} native news metadata, isolation and embedded-icon checks passed; live Unity layout still requires visual verification.");

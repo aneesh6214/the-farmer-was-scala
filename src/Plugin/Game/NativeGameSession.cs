@@ -35,6 +35,7 @@ namespace FarmerScala.Game
             this.window = window ?? throw new ArgumentNullException(nameof(window));
             this.log = log ?? (_ => { });
             api = new HashSet<string>(BuiltinFunctions.Functions.Keys.Where(n => !LanguageFunctions.Contains(n)), StringComparer.Ordinal);
+            if (!FarmerScala.Runtime.SdkProfile.MiningEnabled) api.ExceptWith(FarmerScala.Runtime.SdkProfile.MiningActions);
             RootNode = new CommandNode(this, window);
             PopulateConstants();
         }
@@ -310,7 +311,10 @@ namespace FarmerScala.Game
                 {
                     string symbolic = value.ToString() ?? throw new InvalidOperationException("Game constant has no symbolic name.");
                     int dot = symbolic.IndexOf('.');
-                    values[dot >= 0 ? symbolic.Substring(dot + 1) : symbolic] = value;
+                    string name = dot >= 0 ? symbolic.Substring(dot + 1) : symbolic;
+                    var available = FarmerScala.Runtime.SdkProfile.AvailableConstants;
+                    if (available == null || !available.TryGetValue(family, out var allowed) || allowed.Contains(name, StringComparer.Ordinal))
+                        values[name] = value;
                 }
                 constants[family] = values;
             }

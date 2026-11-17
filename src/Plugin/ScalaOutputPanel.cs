@@ -123,19 +123,25 @@ internal static class ScalaOutputPanel
     {
         private static void Postfix(string __0, ref string __result)
         {
-            if (__0 != Page || !ShowCompilation)
+            if (__0 != Page || !EditorIntegration.Enabled)
                 return;
-            __result = WithCompilationHeading(__result, CompilationState);
+            __result = WithCompilationHeading(__result, ShowCompilation ? CompilationState : CompilationProgress.None);
         }
     }
 
     internal static string WithCompilationHeading(string document, CompilationProgress progress)
     {
-        // Keep the native link, truncated heading and live-output section.
-        // This per-run status stays visible even for a cached, instant build.
+        // Preserve localized link/output markup, but reveal the native truncated
+        // heading only after the worker actually starts executing the program.
         int end = document.IndexOf('\n');
         string first = end < 0 ? document : document.Substring(0, end).TrimEnd('\r');
         string rest = end < 0 ? "" : document.Substring(end + 1);
+        if (progress != CompilationProgress.Done)
+        {
+            int headingEnd = rest.IndexOf('\n');
+            rest = headingEnd < 0 ? "" : rest.Substring(headingEnd + 1);
+        }
+        if (progress == CompilationProgress.None) return first + "\n" + rest;
         string suffix = progress switch
         {
             CompilationProgress.Done => " Done",
@@ -186,17 +192,10 @@ internal static class ScalaOutputPanel
         {
             if (!Active || __instance.IsRunning || MainSim.Inst.IsExecuting())
                 return;
+            compilationRequested = true;
             Plugin.Instance?.ClearQueuedOutput();
-            global::Logger.Close();
-            global::Logger.Clear();
-        }
-
-        private static void Postfix(RuntimeHost __instance)
-        {
-            // Run leaves a pending request even when the build task is cached;
-            // its completion is applied by the next main-thread queue tick.
-            if (Active && __instance.IsCompiling)
-                compilationRequested = true;
+            MainSim.Inst?.Logger.Close();
+            MainSim.Inst?.Logger.Clear();
         }
     }
 
@@ -382,8 +381,9 @@ internal sealed class ScalaOutputButton : MonoBehaviour
             original.anchoredPosition = nativePosition;
         if (shifted && info != null)
             info.anchoredPosition = infoPosition;
-        if (warning != null)
-            warning.gameObject.SetActive(true);
+        // The native warning icon belongs to the same scene. Reactivating it
+        // during scene destruction triggers a Unity error; LateUpdate handles
+        // visibility while the toolbar is alive and the next scene has its own icon.
         ScalaOutputPanel.Retire();
     }
 

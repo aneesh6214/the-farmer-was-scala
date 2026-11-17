@@ -5,16 +5,18 @@ public class Node
 }
 public sealed class CodeWindow
 {
+    public string fileName = "main";
 }
-public static class Logger
+public sealed class Logger
 {
-    public static void Close()
+    public void Close()
     {
     }
 }
 public sealed class MainSim
 {
     public static MainSim Inst = new();
+    public Logger Logger = new();
     public bool Executing;
     public int Starts;
     public bool IsExecuting() => Executing;
@@ -49,12 +51,6 @@ namespace FarmerScala
 }
 namespace FarmerScala.Editor
 {
-    public static class ScalaAnalysis
-    {
-        public static void CompilerReady(string artifact)
-        {
-        }
-    }
     public sealed class ProjectSnapshot
     {
         public string Directory { get; set; } = "";
@@ -66,6 +62,8 @@ namespace FarmerScala.Editor
         public static bool Enabled = true;
         public static ProjectSnapshot Project = new();
         public static string? Error;
+        public static bool RevisionMatches = true;
+        public static bool MatchesRun(IReadOnlyDictionary<string, string> revision, IEnumerable<string> involved) => RevisionMatches;
         public static ProjectSnapshot CaptureProject(CodeWindow window) => Project;
         public static void BeginRun(CodeWindow window)
         {

@@ -15,4 +15,5 @@
     <Reference Include="UnityEngine.UI"><HintPath>$(ManagedDir)\UnityEngine.UI.dll</HintPath></Reference>
     <Reference Include="Unity.TextMeshPro"><HintPath>$(ManagedDir)\Unity.TextMeshPro.dll</HintPath></Reference>
   </ItemGroup>
+  <ItemGroup><Compile Include="../../src/Plugin/Runtime/SdkProfile.cs" Link="SdkProfile.cs" /></ItemGroup>
 </Project>

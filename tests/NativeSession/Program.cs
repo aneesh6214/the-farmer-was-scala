@@ -150,6 +150,19 @@ Check((bool)Invoke(typeof(FarmerScala.RankedRunGuard), "Prefix", ranked)! && tar
 FarmerScala.Editor.EditorIntegration.Enabled = true;
 Check(!(bool)Invoke(typeof(FarmerScala.RankedRunGuard), "Prefix", ranked)! && (bool)Invoke(typeof(FarmerScala.RankedRunGuard), "Prefix", simulated)!, "Scala mode rejects ranked starts and permits ordinary simulation scheduling");
 Check(targets.All(method => !(bool)Invoke(typeof(FarmerScala.SteamScoreGuard), "Prefix", method)!), "Scala mode blocks direct leaderboard UI, score and callback paths");
+var dlcField = typeof(MainSim.LeaderboardStartArgs).GetField("dlcType")!;
+foreach (object dlc in Enum.GetValues(dlcField.FieldType))
+{
+    dlcField.SetValue(ranked, dlc);
+    foreach (LeaderboardType type in Enum.GetValues(typeof(LeaderboardType)))
+    {
+        ranked.leaderboardType = type;
+        if (type == LeaderboardType.none || type == LeaderboardType.simulation) continue;
+        Check(!(bool)Invoke(typeof(FarmerScala.RankedRunGuard), "Prefix", ranked)!, "Scala blocks " + dlc + " ranked mode " + type);
+    }
+}
+ranked.leaderboardType = LeaderboardType.reset;
+
 var noHostState = new object?[] { simulated, false };
 Check(!(bool)Invoke(typeof(FarmerScala.SimulationParseScope), "Prefix", noHostState)! && !FarmerScala.SimulationParseScope.Active, "a simulation without an active Scala host is rejected");
 FarmerScala.Plugin.Instance = new FarmerScala.Plugin { Host = new FarmerScala.TestHost { IsRunning = true } };
@@ -208,10 +221,10 @@ Check(typeof(CodeWindow).GetMethod("UpdateTokens", popupFlags)?.ReturnType == ty
     typeof(CodeWindow).GetMethod("SetToCodeState", popupFlags)?.ReturnType == typeof(object) &&
     new[] { "undoState", "undoChangeTime", "undoPreventNextChange" }.All(name => typeof(CodeWindow).GetField(name, popupFlags) != null),
     "source preservation and atomic editing hooks match native undo implementation");
-Check(typeof(ErrorMessage).GetMethod("ShowError", popupFlags)?.GetParameters().Length == 3 &&
+Check(typeof(ErrorMessage).GetMethod("ShowError", popupFlags)?.GetParameters().Length == 4 &&
     typeof(ErrorMessage).GetField("errorText", popupFlags)?.FieldType == typeof(TMPro.TextMeshProUGUI),
     "diagnostic hover reuses the verified native error widget");
-Console.WriteLine("22 NativeSession/leaderboard/popup/editor-metadata checks passed.");
+Console.WriteLine("NativeSession/leaderboard/popup/editor-metadata checks passed.");
 
 public sealed class GatedQueue<T> : IProducerConsumerCollection<T>
 {

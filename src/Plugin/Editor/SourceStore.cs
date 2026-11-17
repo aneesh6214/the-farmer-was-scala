@@ -156,11 +156,33 @@ internal sealed class SourceStore
     public static string SourceDirectory(string saveDirectory) => Path.Combine(ProjectRoot(saveDirectory), "src");
     public static string LanguageFile(string saveDirectory) => Path.Combine(ProjectRoot(saveDirectory), "language.json");
 
-    public SaveLanguage ReadLanguage(string saveDirectory) => ReadState(saveDirectory).Language;
+    // Native backups run on a background thread while the editor persists layout/sources.
+    // Serialize complete per-save operations, including reads, so backup copies never
+    // observe a half-updated project or race a Windows atomic file replacement.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> saveLocks =
+        new System.Collections.Concurrent.ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+    internal static IDisposable HoldSaveFiles(string saveDirectory)
+        => new SaveFileLease(saveLocks.GetOrAdd(Path.GetFullPath(saveDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), _ => new object()));
+    private sealed class SaveFileLease : IDisposable
+    {
+        private object? gate;
+        internal SaveFileLease(object value) { gate = value; System.Threading.Monitor.Enter(value); }
+        public void Dispose()
+        {
+            if (gate == null) return;
+            var value = gate; gate = null; System.Threading.Monitor.Exit(value);
+        }
+    }
+    public SaveLanguage ReadLanguage(string saveDirectory)
+    {
+        using var access = HoldSaveFiles(saveDirectory);
+        return ReadState(saveDirectory).Language;
+    }
 
     /// <summary>Commit a new save's choice before native save creation. Never converts an existing save.</summary>
     public void InitializeLanguage(string saveDirectory, string saveName, SaveLanguage language)
     {
+        using var access = HoldSaveFiles(saveDirectory);
         CheckLanguage(language);
         var state = ReadState(saveDirectory);
         if (state.Manifest == null && state.Settings == null)
@@ -186,6 +208,7 @@ internal sealed class SourceStore
     /// <summary>Migrate legacy opt-in metadata without touching sources. Unmarked ordinary saves stay read-only.</summary>
     public SaveLanguage FreezeLanguage(string saveDirectory, string saveName)
     {
+        using var access = HoldSaveFiles(saveDirectory);
         var state = ReadState(saveDirectory);
         if (state.Manifest == null && state.Settings == null)
             return SaveLanguage.Default;
@@ -204,6 +227,7 @@ internal sealed class SourceStore
 
     public ProjectManifest ReadManifest(string saveDirectory)
     {
+        using var access = HoldSaveFiles(saveDirectory);
         var state = ReadState(saveDirectory);
         var manifest = state.Manifest ?? new ProjectManifest();
         if (state.Settings != null)
@@ -217,6 +241,7 @@ internal sealed class SourceStore
 
     public void SaveLayout(string saveDirectory, bool scala, WorkspaceLayout layout)
     {
+        using var access = HoldSaveFiles(saveDirectory);
         if (!IsUsableLayout(layout))
             throw new IOException("Unsupported or invalid Scala workspace layout.");
         var manifest = ReadManifest(saveDirectory);
@@ -245,6 +270,7 @@ internal sealed class SourceStore
 
     public Dictionary<string, string> ReadSources(string saveDirectory)
     {
+        using var access = HoldSaveFiles(saveDirectory);
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string source = SourceDirectory(saveDirectory);
         if (!System.IO.Directory.Exists(source))
@@ -265,6 +291,7 @@ internal sealed class SourceStore
 
     public void SaveSources(string saveDirectory, string saveName, bool enabled, IDictionary<string, string> sources)
     {
+        using var access = HoldSaveFiles(saveDirectory);
         var manifest = ReadManifest(saveDirectory);
         var language = manifest.Enabled ? SaveLanguage.NativeScala : SaveLanguage.Default;
         if (enabled != manifest.Enabled)
@@ -302,6 +329,7 @@ internal sealed class SourceStore
 
     public ProjectSnapshot Snapshot(string saveDirectory, string entry, IDictionary<string, string> sources)
     {
+        using var access = HoldSaveFiles(saveDirectory);
         ValidateFileName(entry);
         if (!sources.ContainsKey(entry))
             throw new IOException("Entry window is not part of the active Scala project: " + entry);
@@ -540,10 +568,30 @@ internal sealed class SourceStore
         System.IO.Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         File.WriteAllText(temporary, content, Utf8);
-        if (File.Exists(path))
-            File.Replace(temporary, path, path + ".bak");
-        else
-            File.Move(temporary, path);
+        try
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(path))
+                        File.Replace(temporary, path, path + ".bak");
+                    else
+                        File.Move(temporary, path);
+                    return;
+                }
+                // A concurrent reader or scanner can briefly hold a Windows delete-sharing lock.
+                // Keep the existing file intact and retry the atomic replacement for at most 100 ms.
+                catch (IOException) when (attempt < 4 && File.Exists(temporary))
+                {
+                    System.Threading.Thread.Sleep(25);
+                }
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
 
     private static void CopyDirectory(string source, string destination)

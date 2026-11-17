@@ -35,7 +35,6 @@ internal sealed class CompilerClient : IDisposable
     private ProjectSnapshot? latestWarm;
     private IDisposable? warmPin;
     private bool warming;
-    public event Action<string>? ArtifactReady;
 
     public CompilerClient(string root, string cache, Action<string> log)
     {
@@ -221,7 +220,6 @@ internal sealed class CompilerClient : IDisposable
                             requestPins[work.Hash] = artifactPin;
                             artifactPin = null;
                         }
-                        ArtifactReady?.Invoke(copy);
                     }
                     else
                         RemoveRequest(work.Hash); // An unchanged project may recover after tool/cache repair.
@@ -281,7 +279,7 @@ internal sealed class CompilerClient : IDisposable
             string service = Path.Combine(root, "tools", "compiler", "FarmerScala.Compiler.dll");
             if (!File.Exists(dotnet) || !File.Exists(service))
                 throw new FileNotFoundException("The bundled Scala compiler or .NET runtime is missing. Reinstall Farmer Scala.");
-            var info = new ProcessStartInfo(dotnet, Quote(service) + " --sdk " + Quote(Path.Combine(root, "sdk")) + " --toolchain " + Quote(Path.Combine(root, "toolchain")))
+            var info = new ProcessStartInfo(dotnet, Quote(service) + " --sdk " + Quote(SdkProfile.Resolve(root)) + " --toolchain " + Quote(Path.Combine(root, "toolchain")))
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,

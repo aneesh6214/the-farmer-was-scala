@@ -135,22 +135,26 @@ object api:
   def get_world_size(): Int = call[Int]("get_world_size")
 
   /**
-    * Reads the entity under the drone.
+    * Reads the entity under the drone or on an adjacent tile.
     *
+    * @param direction an adjacent tile, or `None` for the drone's tile.
     * @return `Some(entity)` for an occupied tile, or `None` for an empty tile.
     * @note Costs 1 native tick.
     * @example if (get_entity_type().contains(Entities.Grass)) harvest()
     */
-  def get_entity_type(): Option[Entities] = call[Option[Entities]]("get_entity_type")
+  def get_entity_type(direction: Option[Directions] = None): Option[Entities] =
+    call[Option[Entities]]("get_entity_type", direction.fold[js.Any](null)(_.wire))
 
   /**
-    * Reads the ground under the drone.
+    * Reads the ground under the drone or on an adjacent tile.
     *
-    * @return the current ground type, such as `Grounds.Soil`.
+    * @param direction an adjacent tile, or `None` for the drone's tile.
+    * @return the ground type, such as `Grounds.Soil`.
     * @note Costs 1 native tick.
     * @example if (get_ground_type() != Grounds.Soil) till()
     */
-  def get_ground_type(): Grounds = call[Grounds]("get_ground_type")
+  def get_ground_type(direction: Option[Directions] = None): Grounds =
+    call[Grounds]("get_ground_type", direction.fold[js.Any](null)(_.wire))
 
   /**
     * Reads the current game time.

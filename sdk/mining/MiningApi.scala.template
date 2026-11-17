@@ -1,0 +1,109 @@
+package game
+
+import scala.scalajs.js
+
+/** Mining operations are exported only by the DLC-enabled SDK. */
+object MiningApi:
+  private def call[A: WireCodec](operation: String, args: js.Any*): A =
+    summon[WireCodec[A]].decode(js.JSON.parse(Action(operation, js.JSON.stringify(js.Array(args*)))))
+
+  /**
+   * Digs the ground beneath the drone, collecting its resources when it breaks.
+   *
+   * @return `true` if digging succeeds, otherwise `false`.
+   */
+  def dig(): Boolean = call[Boolean]("dig")
+
+  /**
+   * Places a ground block beneath the drone, using the required inventory resources.
+   *
+   * @param ground the ground type to place.
+   * @return `true` if the block is placed, otherwise `false`.
+   */
+  def place(ground: Grounds): Boolean = call[Boolean]("place", ground.wire)
+
+  /**
+   * Returns the vertical coordinate of the surface at the drone or an adjacent tile.
+   * Underground coordinates are negative.
+   *
+   * @param direction an adjacent tile, or `None` for the drone's tile.
+   * @return the tile's vertical coordinate.
+   */
+  def get_pos_z(direction: Option[Directions] = None): Int =
+    call[Int]("get_pos_z", direction.fold[js.Any](null)(_.wire))
+
+  /**
+   * Measures the hardness of the ground beneath the drone or an adjacent tile.
+   *
+   * @param direction an adjacent tile, or `None` for the drone's tile.
+   * @return the hardness, or `None` if the tile cannot be inspected.
+   */
+  def get_hardness(direction: Option[Directions] = None): Option[Double] =
+    direction match
+      case Some(value) => call[Option[Double]]("get_hardness", value.wire)
+      case None => call[Option[Double]]("get_hardness")
+
+  /**
+   * Measures the stability of the ground beneath the drone or an adjacent tile.
+   *
+   * @param direction an adjacent tile, or `None` for the drone's tile.
+   * @return the stability, or `None` if the tile cannot be inspected.
+   */
+  def get_stability(direction: Option[Directions] = None): Option[Double] =
+    direction match
+      case Some(value) => call[Option[Double]]("get_stability", value.wire)
+      case None => call[Option[Double]]("get_stability")
+
+  /**
+   * Prospects for iron at the current depth.
+   *
+   * @return a direction toward iron, or `None` when none is found within range.
+   */
+  def prospect_iron(): Option[Directions] = call[Option[Directions]]("prospect_iron")
+
+  /**
+   * Prospects for quartz at the current depth, consuming the game's prospecting cost.
+   *
+   * @return the distance to quartz, or `None` when none is found or prospecting fails.
+   */
+  def prospect_quartz(): Option[Double] = call[Option[Double]]("prospect_quartz")
+
+  /**
+   * Pushes a movable ground block in a cardinal direction.
+   *
+   * @param direction the direction in which to push.
+   * @return `true` if the block moves, otherwise `false`.
+   */
+  def push(direction: Directions): Boolean = call[Boolean]("push", direction.wire)
+
+  /**
+   * Checks whether a ground block can be pushed in a cardinal direction.
+   *
+   * @param direction the direction to check.
+   * @return whether pushing is possible.
+   */
+  def can_push(direction: Directions): Boolean = call[Boolean]("can_push", direction.wire)
+
+  /**
+   * Jumps to the underground feature associated with an unlock.
+   * The game permits at most one jump per run.
+   *
+   * @param unlock the feature to jump to.
+   * @return `Unit`.
+   */
+  def jump(unlock: Unlocks): Unit = call[Unit]("jump", unlock.wire)
+
+  /**
+   * Sets the drone's hover height above the ground.
+   *
+   * @param height the requested hover height.
+   * @return `true` if the height changes successfully, otherwise `false`.
+   */
+  def hover(height: Int): Boolean = call[Boolean]("hover", height)
+
+  /**
+   * Returns the drone's current hover height.
+   *
+   * @return the hover height above the ground.
+   */
+  def get_hover(): Int = call[Int]("get_hover")

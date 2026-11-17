@@ -41,7 +41,8 @@ while (await Console.In.ReadLineAsync() is { } line)
             result.hash,
             result.diagnostics,
             result.elapsedMs,
-            result.cached
+            result.cached,
+            result.dependencies
         }));
     }
     catch (Exception error)

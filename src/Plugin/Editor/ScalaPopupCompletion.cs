@@ -18,6 +18,7 @@ internal static class ScalaPopupCompletion
     private sealed class Revision
     {
         public long Value;
+        public Dictionary<string, int> Order = new Dictionary<string, int>(StringComparer.Ordinal);
     }
     private static readonly ConditionalWeakTable<CodeCompleter, Revision> revisions = new ConditionalWeakTable<CodeCompleter, Revision>();
     private static long revision;
@@ -30,6 +31,7 @@ internal static class ScalaPopupCompletion
         {
             if (!reopening && !(startStringIndex > 0 && func.CodeInput.text[startStringIndex - 1] == '.'))
                 optionStrings = ScalaAnalysis.NativeSuggestions(func, func.CodeInput.stringPosition, optionStrings);
+            SetOrder(__instance, optionStrings);
             return true;
         }
         if (__instance.IsOpen)
@@ -72,12 +74,33 @@ internal static class ScalaPopupCompletion
     {
         // A resolved receiver supplies its own members. At global scope, keep
         // native game APIs alongside project declarations and Scala keywords.
+        if (ScalaModuleCompletion.IsImport(source, start))
+            return names;
         if (start > 0 && start <= source.Length && (source[start - 1] == '.' || source[start - 1] == '@'))
             return names;
         var native = Options.GetValue(popup) as List<string> ?? new List<string>();
-        return ScalaCompletionUnlocks.Native(native.Where(ScalaSyntaxHighlighter.IsBuiltinName)).Concat(names).Concat(ScalaLexer.Keywords)
+        var fallback = ScalaCompletionUnlocks.Native(native.Where(ScalaSyntaxHighlighter.IsBuiltinName)).Concat(ScalaLexer.Keywords)
             .Concat(new[] { "List", "Vector", "Seq", "Map", "Set", "Option", "Some", "None", "Either", "Left", "Right", "println" })
-            .Distinct(StringComparer.Ordinal).OrderBy(n => n, StringComparer.Ordinal).ToList();
+            .OrderBy(n => n, StringComparer.Ordinal);
+        return names.Concat(fallback).Distinct(StringComparer.Ordinal).ToList();
+    }
+    private static void SetOrder(CodeCompleter popup, List<string> names)
+    {
+        var order = revisions.GetOrCreateValue(popup).Order;
+        order.Clear();
+        foreach (string name in names) if (!order.ContainsKey(name)) order.Add(name, order.Count);
+    }
+    // Native UpdateOptions re-sorts by prefix match and then alphabetically.
+    // Preserve its matching behavior, using provider relevance before that tie-break.
+    [HarmonyPatch(typeof(CodeCompleter), "MatchPriority")]
+    private static class Relevance
+    {
+        private static void Postfix(CodeCompleter __instance, string s, ref int __result)
+        {
+            if (Owner.GetValue(__instance) is CodeWindow window && EditorIntegration.IsScalaWindow(window) &&
+                revisions.TryGetValue(__instance, out var state) && state.Order.TryGetValue(s, out int rank))
+                __result = __result * (state.Order.Count + 1) + rank;
+        }
     }
     [HarmonyPatch(typeof(CodeCompleter), nameof(CodeCompleter.Close))]
     private static class Closed
@@ -93,6 +116,7 @@ internal static class ScalaPopupCompletion
         private static IEnumerable<MethodBase> TargetMethods()
         {
             yield return AccessTools.Method(typeof(CodeCompleter), nameof(CodeCompleter.UpdateString));
+            yield return AccessTools.Method(typeof(CodeCompleter), nameof(CodeCompleter.SetTypedString));
             yield return AccessTools.Method(typeof(CodeCompleter), nameof(CodeCompleter.Backspace));
         }
         private static void Postfix(CodeCompleter __instance)
@@ -115,7 +139,9 @@ internal static class ScalaPopupCompletion
                 if (__instance == null || !__instance.IsOpen || !revisions.TryGetValue(__instance, out var active) || active.Value != token ||
                     !ReferenceEquals(Owner.GetValue(__instance), window) || window.CodeInput.text != source || window.CodeInput.stringPosition != cursor)
                     return;
-                Options.SetValue(__instance, MergeNative(__instance, source, __instance.startStringIndex, names));
+                var ordered = MergeNative(__instance, source, __instance.startStringIndex, names);
+                SetOrder(__instance, ordered);
+                Options.SetValue(__instance, ordered);
                 UpdateOptions.Invoke(__instance, null);
             });
         }

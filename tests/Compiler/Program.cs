@@ -46,6 +46,7 @@ quick_print(crops.sum)
 File.WriteAllText(Path.Combine(project, "main.scala"), source);
 File.WriteAllText(Path.Combine(project, "replay.scala"), """
 class Mutable(var value: Int)
+@main def replay(): Unit = {
 val state = new Mutable(7)
 val randomValue = scala.util.Random.nextInt()
 val millis = System.currentTimeMillis()
@@ -60,6 +61,7 @@ val result = wait_for(drone)
 assert(result == (randomValue, millis, nanos, 99))
 assert(state.value == 8)
 quick_print("scala-replay-ok")
+}
 """);
 File.WriteAllText(Path.Combine(project, "nativeFault.scala"), "def nativeProbe(): Int = {\n    get_world_size()\n}\nnativeProbe()\n");
 var first = await compiler.CompileAsync(project, "main.scala", Path.Combine(scratch, "build"));

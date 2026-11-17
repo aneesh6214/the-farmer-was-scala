@@ -81,6 +81,7 @@ try
     var completion = await Send(Request("complete", raw, raw.LastIndexOf("bob.", StringComparison.Ordinal) + 4));
     var names = completion["completions"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
     Check(names.Contains("inherited") && names.Contains("own"), "real compiler inferred inherited completion");
+    Check(names.IndexOf("own") < names.IndexOf("inherited"), "declared members precede inherited members in compiler relevance order");
     raw = raw.Replace("bob.\n", "bob.inherited()\n");
     int inherited = raw.LastIndexOf("inherited", StringComparison.Ordinal);
     var resolution = await Send(Request("resolve", raw, inherited + 4));
@@ -275,7 +276,16 @@ try
         Check(((string?)hoverEnum["hover"]?["text"])?.Contains("case ", StringComparison.Ordinal) == true, "SDK enum hover includes its actual cases: " + name + " " + hoverEnum.ToJsonString());
         var enumMembers = await Send(Request("complete", name + ".", name.Length + 1));
         Check(enumMembers["completions"]!.AsArray().Any(n => (string?)n == "values") && enumMembers["completions"]!.AsArray().Any(n => (string?)n == "valueOf"), "normal Scala enum companion completion: " + name);
+        var enumOrder = enumMembers["completions"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
+        string firstCase = name == "Directions" ? "North" : name == "Entities" ? "Grass" : name == "Items" ? "Hay" : name == "Grounds" ? "Grassland" : name == "Unlocks" ? "Grass" : "Straw_Hat";
+        Check(enumOrder.IndexOf(firstCase) >= 0 && enumOrder.IndexOf(firstCase) < enumOrder.IndexOf("values"), "enum cases precede companion utilities: " + name);
+        if (enumOrder.Contains("->")) Check(enumOrder.IndexOf(firstCase) < enumOrder.IndexOf("->"), "enum cases precede extension operators: " + name);
+
     }
+    string tupleSource = "(1, 2).";
+    var tupleCompletion = await Send(Request("complete", tupleSource, tupleSource.Length));
+    var tupleOrder = tupleCompletion["completions"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
+    Check(tupleOrder.Contains("_1") && (!tupleOrder.Contains("->") || tupleOrder.IndexOf("_1") < tupleOrder.IndexOf("->")), "underscore tuple fields remain ordinary members ahead of extension operators");
     string docCode = "import scala.util.Try\nclass FancyProblem extends RuntimeException\n/** [[IllegalArgumentException]] [[FancyProblem]] [[Try]] [[List(1).ma]] */\ndef example(): Unit = ()\n";
     var docCompletion = await Send(Request("complete", docCode, docCode.IndexOf("List(1).ma", StringComparison.Ordinal) + 10));
     Check(docCompletion["completions"]!.AsArray().Any(n => (string?)n == "map"), "normal member completion inside Scaladoc reference: " + docCompletion.ToJsonString());
@@ -301,6 +311,66 @@ try
     string completeThrows = throwsDoc.Replace("IllegalArg", "IllegalArgumentException", StringComparison.Ordinal);
     var throwsColors = await Send(Request("analyze", completeThrows, 0));
     Check(throwsColors["spans"]!.AsArray().Any(n => (int?)n?["start"] == completeThrows.IndexOf("IllegalArgumentException", StringComparison.Ordinal) && (string?)n?["kind"] == "class"), "throws exception name receives compiler type color");
+    var inheritedSources = new JsonObject
+    {
+        ["baseModel"] = "abstract class Base {\n  /** Items produced by this crop. */\n  val yieldItems: Set[Items]\n  def handleTile(tile: Int): Unit\n}\nclass Carrot extends Base {\n override val yieldItems: Set[Items] = Set(Items.Carrot)\n /** Plant [[Entities.Carrot]]. */\n override def handleTile(tile: Int): Unit = ()\n}\n",
+        ["f0"] = "import baseModel.*\nval c = new Carrot\nc.handleTile(0)\nval items = c.yieldItems\nval indexed = Seq(1, 2).zipWithIndex\n"
+    };
+    string inheritedText = (string)inheritedSources["f0"]!;
+    async Task<JsonObject> ResolveNew(string name) => await Send(new JsonObject {
+        ["op"] = "resolve", ["file"] = "f0", ["sources"] = inheritedSources.DeepClone(),
+        ["offset"] = inheritedText.IndexOf(name, StringComparison.Ordinal) + name.Length });
+    var overrideDoc = await ResolveNew("handleTile");
+    Check(((string?)overrideDoc["hover"]?["text"])?.Contains("Plant [[Entities.Carrot]].", StringComparison.Ordinal) == true,
+        "documented override retains its own Scaladoc: " + overrideDoc.ToJsonString());
+    var inheritedField = await ResolveNew("yieldItems");
+    Check(((string?)inheritedField["hover"]?["text"])?.Contains("Items produced by this crop.", StringComparison.Ordinal) == true,
+        "undocumented override inherits base field Scaladoc: " + inheritedField.ToJsonString());
+    var zipDoc = await ResolveNew("zipWithIndex");
+    Check(((string?)zipDoc["hover"]?["text"])?.Contains("indices", StringComparison.OrdinalIgnoreCase) == true,
+        "standard-library override inherits zipWithIndex documentation: " + zipDoc.ToJsonString());
+    string boundarySource = "/** Unrelated old description. */\ndef documented(): Unit = ()\n/* Ordinary block comment. */\ndef fresh(): Unit = ()\nfresh()\n";
+    var boundaryDoc = await Send(new JsonObject { ["op"] = "resolve", ["file"] = "f0", ["sources"] = new JsonObject { ["f0"] = boundarySource }, ["offset"] = boundarySource.LastIndexOf("fresh", StringComparison.Ordinal) + 5 });
+    Check(!(((string?)boundaryDoc["hover"]?["text"])?.Contains("Unrelated old description.", StringComparison.Ordinal) ?? false), "Scaladoc cannot leak across another declaration and a normal block comment: " + boundaryDoc.ToJsonString());
+    var organized = await Send(new JsonObject { ["op"] = "format", ["file"] = "imports", ["sources"] = new JsonObject {
+        ["imports"] = "import PositionUtils.goTo\nimport PlantingUtils.{plantOrHarvest}\nimport PositionUtils.{goTo, farmIndices}\nval n=1\n" } });
+    string organizedSource = (string)organized["source"]!;
+    Check(organizedSource.Contains("PositionUtils.{farmIndices, goTo}", StringComparison.Ordinal) &&
+        organizedSource.Contains("import PlantingUtils.plantOrHarvest", StringComparison.Ordinal), "formatter merges and deduplicates imports: " + organizedSource);
+    var aliasImports = await Send(new JsonObject { ["op"] = "format", ["file"] = "imports", ["sources"] = new JsonObject {
+        ["imports"] = "import scala.collection.mutable as mutableCollections\nimport scala.util.{Try as Attempt}\nval unused=1\n" } });
+    Check(((string)aliasImports["source"]!).Contains("Attempt", StringComparison.Ordinal) && ((string)aliasImports["source"]!).Contains("mutableCollections", StringComparison.Ordinal), "formatting preserves aliases and unused imports");
+    string importCases = "// Keep this explanation.\nimport scala.collection.mutable\nimport mutable.{ArrayBuffer, ListBuffer as Buffers}\nimport scala.util.{Try, Success as _, *}\nimport scala.math.Ordering.Implicits.given\ndef local(): Unit = {\n // A local import.\n import scala.util.Random\n val a=1\n}\n";
+    var preserved = await Send(new JsonObject { ["op"] = "format", ["file"] = "imports", ["sources"] = new JsonObject { ["imports"] = importCases } });
+    string preservedSource = (string)preserved["source"]!;
+    Check(preservedSource.Contains("Keep this explanation.") && preservedSource.Contains("A local import.") && preservedSource.Contains("Buffers") && preservedSource.Contains("Success as _") && preservedSource.Contains("Implicits.given"), "import cleanup preserves comments, aliases, exclusions, and given imports: " + preservedSource);
+    Check(preservedSource.IndexOf("import scala.collection.mutable", StringComparison.Ordinal) < preservedSource.IndexOf("import mutable.", StringComparison.Ordinal) && preservedSource.IndexOf("import scala.util.Random", StringComparison.Ordinal) > preservedSource.IndexOf("def local", StringComparison.Ordinal), "dependent and local imports retain their scope");
+    var stableImports = await Send(new JsonObject { ["op"] = "format", ["file"] = "imports", ["sources"] = new JsonObject { ["imports"] = preservedSource } });
+    Check((string)stableImports["source"]! == preservedSource, "import formatting is idempotent");
+    var miningCatalog = new Dictionary<string, string[]> {
+        ["Entities"] = new[] { "Grass", "Bamboo", "Rice" }, ["Items"] = new[] { "Hay", "Coal" },
+        ["Grounds"] = new[] { "Grassland", "Soil", "Coal", "Red_Block" }, ["Unlocks"] = new[] { "Grass", "Mining", "Coal" }
+    };
+    string miningSdk = FarmerScala.Runtime.SdkProfile.Build(Path.Combine(root, "sdk"), Path.Combine(root, ".local/analysis-sdk-checks"), true, miningCatalog);
+    async Task ConfigureSdk(string selected) => await Send(new JsonObject {
+        ["op"] = "configure", ["classpath"] = JsonNode.Parse(File.ReadAllText(metadata)), ["sdk"] = selected,
+        ["workspace"] = workspace, ["librarySources"] = Path.Combine(libraryRoot, "sources") });
+    await ConfigureSdk(miningSdk);
+    string miningCode = "@main def mining(): Unit = {\n val z: Int = get_pos_z()\n val h: Option[Double] = get_hardness()\n val crop: Entities = Entities.Bamboo\n val ground: Grounds = Grounds.Red_Block\n dig()\n ()\n}\n";
+    JsonObject MiningRequest(string op, string text, int offset = 0) => new() { ["op"] = op, ["file"] = "f0", ["offset"] = offset, ["sources"] = new JsonObject { ["f0"] = text } };
+    var miningDiagnostics = await Send(MiningRequest("diagnostics", miningCode));
+    Check(miningDiagnostics["diagnostics"]!.AsArray().Count == 0, "mining SDK and @main work in the presentation compiler: " + miningDiagnostics.ToJsonString());
+    var miningHover = await Send(MiningRequest("resolve", miningCode, miningCode.IndexOf("get_hardness", StringComparison.Ordinal) + 5));
+    Check((bool?)miningHover["isGameBuiltin"] == true && (string?)miningHover["gameFunctionName"] == "get_hardness" && ((string?)miningHover["hover"]?["text"])?.Contains("hardness of the ground", StringComparison.Ordinal) == true, "mining hover retains typed Scaladoc and native right-click identity: " + miningHover.ToJsonString());
+    var miningCompletion = await Send(MiningRequest("complete", "Grounds.", 8));
+    Check(miningCompletion["completions"]!.AsArray().Any(n => (string?)n == "Red_Block"), "mining enum constants enter normal compiler completion");
+    var miningColors = await Send(MiningRequest("analyze", miningCode));
+    Check(miningColors["spans"]!.AsArray().Any(n => (int?)n?["start"] == miningCode.IndexOf("get_hardness", StringComparison.Ordinal) && (string?)n?["kind"] == "builtin"), "mining functions receive game builtin semantic color");
+    await ConfigureSdk(Path.Combine(root, "sdk"));
+    var baseCompletion = await Send(MiningRequest("complete", "Grounds.", 8));
+    Check(!baseCompletion["completions"]!.AsArray().Any(n => (string?)n == "Red_Block"), "base profile exposes no mining enum constants");
+    var baseDiagnostics = await Send(MiningRequest("diagnostics", "dig()\n"));
+    Check(baseDiagnostics["diagnostics"]!.AsArray().Any(n => ((string?)n?["message"])?.Contains("dig", StringComparison.Ordinal) == true), "base presentation compiler rejects unavailable mining APIs");
     Console.WriteLine($"Real Scala presentation compiler checks passed: {checks}");
 }
 finally

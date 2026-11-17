@@ -7,6 +7,7 @@ namespace FarmerScala.Editor;
 /// <summary>Immediate Scala lexical colors plus exact-source project symbol overlays.</summary>
 internal static class ScalaSyntaxHighlighter
 {
+    internal static void RegisterBuiltins(IEnumerable<string> names) => GameNames.UnionWith(names);
     private static readonly HashSet<string> GameNames = new HashSet<string>((
         "harvest can_harvest swap plant move can_move till get_pos_x get_pos_y get_world_size get_entity_type get_ground_type get_time get_tick_count " +
         "use_item get_water do_a_flip change_hat game_print quick_print num_items get_cost clear get_companion unlock num_unlocked measure random simulate " +
@@ -19,7 +20,7 @@ internal static class ScalaSyntaxHighlighter
     internal static bool IsStandardTypeName(string name) => StandardTypes.Contains(name);
 
     public static string Colorize(string source, ScalaSyntaxPalette palette, string searchWord = "", int searchIndex = -1,
-        bool escapeMarkup = true, IReadOnlyList<SemanticSpan>? semanticSpans = null, int navigationStart = -1, int navigationLength = 0)
+        bool escapeMarkup = true, IReadOnlyList<SemanticSpan>? semanticSpans = null, int navigationStart = -1, int navigationLength = 0, int matchingFirst = -1, int matchingSecond = -1)
     {
         if (source.Length == 0)
             return source;
@@ -107,7 +108,7 @@ internal static class ScalaSyntaxHighlighter
         for (int i = 0; i < source.Length; i++)
         {
             string color = colors[i] ?? "";
-            string mark = marks[i] == 0 ? "" : marks[i] == 2 ? palette.SelectedSearch : palette.Search;
+            string mark = marks[i] == 0 ? (i == matchingFirst || i == matchingSecond ? ScalaSyntaxPalette.ParenthesisBackground : "") : marks[i] == 2 ? palette.SelectedSearch : palette.Search;
             bool underline = navigation && i >= navigationStart && i < navigationStart + navigationLength;
             if (color != currentColor || mark != currentMark || underline != underlined)
             {

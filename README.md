@@ -10,7 +10,7 @@ Windows x64 and a supported Steam installation of the game are required.
 
 **From Releases:** 
 
-Download `the-farmer-was-scala-setup.exe` and follow the wizard, or download `the-farmer-was-scala.zip` and extract it beside `TheFarmerWasReplaced.exe` with the game closed. BepInEx and all runtimes are included.
+Download the setup EXE and follow the wizard, or download the ZIP and extract it beside `TheFarmerWasReplaced.exe` with the game closed. BepInEx and all runtimes are included.
 
 **From Source:**
 
@@ -26,6 +26,25 @@ cd the-farmer-was-scala
 ```
 
 Launch through Steam afterward and create a **Scala 3** save. Language belongs to the save and cannot be switched during play. **Steam achievements and official leaderboards are disabled in Scala saves.** Default saves retain the game's original language.
+
+The Miner Was Replaced DLC is optional. When installed, its mining APIs are available in Scala; base-game installations work without it.
+
+## Running code
+
+Use `@main` to define what runs when you press Play:
+
+```scala
+@main def farm(): Unit = {
+  while (true) {
+    harvest()
+    move(North)
+  }
+}
+```
+
+Each file supports one parameterless `@main` method returning `Unit`. Referencing the file's other members does not call this method.
+
+Files without `@main` keep their existing scripting behavior. Statements outside methods still run when the file's module initializes. When converting an existing script, move its execution loop inside the annotated method and remove the call at the bottom.
 
 ## Contributing
 

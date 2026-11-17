@@ -9,7 +9,7 @@ using System.Threading.Channels;
 namespace FarmerScala.Compiler;
 
 public sealed record Diagnostic(string file, int line, int column, int endLine, int endColumn, string message);
-public sealed record Compilation(bool ok, string? artifact, string? sourceMap, string hash, IReadOnlyList<Diagnostic> diagnostics, double elapsedMs, bool cached = false);
+public sealed record Compilation(bool ok, string? artifact, string? sourceMap, string hash, IReadOnlyList<Diagnostic> diagnostics, double elapsedMs, bool cached = false, IReadOnlyList<string>? dependencies = null);
 
 /// <summary>One persistent compiler JVM. Raw source is never executed by this service.</summary>
 public sealed class CompilerService(string sdk, string toolchain) : IDisposable
@@ -54,11 +54,14 @@ public sealed class CompilerService(string sdk, string toolchain) : IDisposable
                         return new(false, null, null, "", [new(module + ".scala", 1, 1, 1, 1, "Module '" + module[..dot] + "' is also used as a namespace. Rename one of these files.")], timer.Elapsed.TotalMilliseconds);
             var sdkFiles = Directory.GetFiles(sdk, "*.scala", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToArray();
             var sources = files.ToDictionary(f => Path.GetFileName(f)!, f => File.ReadAllText(f, Utf8), StringComparer.Ordinal);
+            var prepared = sources.ToDictionary(p => p.Key, p => EntryPoint.Prepare(p.Key, p.Value), StringComparer.Ordinal);
+            var invalid = prepared.Values.FirstOrDefault(p => p.Error != null);
+            if (invalid?.Error != null) return new(false, null, null, "", [invalid.Error], timer.Elapsed.TotalMilliseconds);
             string hash = Hash(entry, sources, sdkFiles);
             string published = Path.Combine(output, "artifacts", hash);
             string artifact = Path.Combine(published, "main.js");
-            if (ValidArtifact(artifact, hash) && File.Exists(Path.Combine(output, "compiler-classpath.json")))
-                return new(true, artifact, artifact + ".map", hash, [], timer.Elapsed.TotalMilliseconds, true);
+            if (ValidArtifact(artifact, hash) && File.Exists(artifact + ".dependencies.json") && File.Exists(Path.Combine(output, "compiler-classpath.json")))
+                return new(true, artifact, artifact + ".map", hash, [], timer.Elapsed.TotalMilliseconds, true, JsonSerializer.Deserialize<string[]>(File.ReadAllText(artifact + ".dependencies.json")));
 
             string generated = Path.Combine(output, "src", "main", "scala");
             Directory.CreateDirectory(generated);
@@ -70,7 +73,7 @@ public sealed class CompilerService(string sdk, string toolchain) : IDisposable
                 desired.Add(target);
                 // Prefix deliberately stays two lines. Scala is inside explicit braces;
                 // unchanged user indentation and columns remain valid in Scala 3.
-                WriteChanged(target, Prefix(name) + source.Value.Replace("\r\n", "\n") + "\n def __farmerRun(): Unit = ()\n}\n");
+                WriteChanged(target, Prefix(name) + prepared[source.Key].Source.Replace("\r\n", "\n") + "\n def __farmerRun(): Unit = " + prepared[source.Key].Body + "\n}\n");
             }
             string entryModule = Path.GetFileNameWithoutExtension(entry);
             string cases = string.Join("\n", files.Select(f => { var n = Path.GetFileNameWithoutExtension(f); return "case " + JsonSerializer.Serialize(n) + " => _root_.__farmer_player." + string.Join(".", n.Split('.').Select(part => "`" + part + "`")) + ".__farmerRun()"; }));
@@ -110,6 +113,10 @@ public sealed class CompilerService(string sdk, string toolchain) : IDisposable
             if (!log.Success || !File.Exists(linked))
             {
                 var diagnostics = ParseDiagnostics(log.Lines, files);
+                for (int i = 0; i < diagnostics.Count; i++)
+                    if (prepared.TryGetValue(diagnostics[i].file, out var entryPoint) && entryPoint.Location != null &&
+                        diagnostics[i].line > sources[diagnostics[i].file].Count(c => c == '\n') + 1)
+                        diagnostics[i] = entryPoint.Location;
                 if (diagnostics.Count == 0)
                     diagnostics.Add(new(entry, 1, 1, 1, 1, "Compilation failed.\n" + string.Join("\n", log.Lines.TakeLast(20))));
                 return new(false, null, null, hash, diagnostics, timer.Elapsed.TotalMilliseconds);
@@ -164,7 +171,9 @@ public sealed class CompilerService(string sdk, string toolchain) : IDisposable
                 scalaJs = "1.22.0",
                 createdUtc = DateTime.UtcNow
             }));
-            return new(true, artifact, artifact + ".map", hash, [], timer.Elapsed.TotalMilliseconds);
+            var dependencies = await CompiledDependencies.Read(toolchain, output, entry, moduleNames, cancellation);
+            WriteChanged(artifact + ".dependencies.json", JsonSerializer.Serialize(dependencies));
+            return new(true, artifact, artifact + ".map", hash, [], timer.Elapsed.TotalMilliseconds, false, dependencies);
         }
         finally { gate.Release(); }
     }
@@ -179,6 +188,7 @@ public sealed class CompilerService(string sdk, string toolchain) : IDisposable
     private static string Hash(string entry, IReadOnlyDictionary<string, string> sources, string[] sdkFiles)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData(Utf8.GetBytes("FarmerScala-1.1.0-entrypoints-semanticdb"));
         void Add(string s)
         {
             hash.AppendData(Utf8.GetBytes(s));
@@ -270,6 +280,7 @@ import org.scalajs.linker.interface.{ESVersion, ModuleKind}
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / offline := sys.props.get("farmer.offline").contains("true")
 lazy val root = project.in(file(".")).enablePlugins(ScalaJSPlugin).settings(
+  scalacOptions += "-Xsemanticdb",
   Compile / unmanagedSourceDirectories += baseDirectory.value / "sdk",
   scalaJSUseMainModuleInitializer := false,
   scalaJSLinkerConfig ~= { _.withModuleKind(ModuleKind.NoModule).withESFeatures(_.withESVersion(ESVersion.ES2015).withAllowBigIntsForLongs(false)).withOptimizer(false).withSourceMap(true) },

@@ -148,8 +148,10 @@ public class Input
     public string text = "";
     public TMPro.TMP_Text textComponent = new UnityEngine.GameObject().AddComponent<TMPro.TMP_Text>();
 }
+public class Window : UnityEngine.Component { }
 public class CodeWindow : UnityEngine.Component
 {
+    public object workspace = new();
     private readonly TMPro.TMP_Text codeText = new UnityEngine.GameObject().AddComponent<TMPro.TMP_Text>();
     private readonly BreakPointPanel breakpointPanel = new UnityEngine.GameObject().AddComponent<BreakPointPanel>();
     private UnityEngine.Vector2 extraSize = new(80,100);

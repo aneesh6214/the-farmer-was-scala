@@ -21,7 +21,8 @@ internal static class ScalaCodeUnlocks
     private static bool reportedUiFailure;
 
     internal static bool IsCodeUpgrade(string id) => id != null && Approved.Contains(id);
-    internal static bool IsLeaderboard(string id) => string.Equals(id, "leaderboard", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsLeaderboard(string id) => string.Equals(id, "leaderboard", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(id, "underground_leaderboard", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Copies load input. Encoded IDs establish levels before native UnlockAllIn.</summary>
     internal static List<string> Augment(IEnumerable<string> original)

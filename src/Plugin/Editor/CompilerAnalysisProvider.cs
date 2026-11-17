@@ -37,7 +37,7 @@ internal sealed class CompilerAnalysisProvider : IScalaAnalysisProvider, IScalaE
     private volatile bool stopping;
     private int updates;
     private long sequence;
-    private long generation;
+    private long generation = 1;
     private long retryAfterTicks;
     private IReadOnlyDictionary<string, string>? lastSources;
     private string sourceKey = "";
@@ -47,27 +47,28 @@ internal sealed class CompilerAnalysisProvider : IScalaAnalysisProvider, IScalaE
     internal CompilerAnalysisProvider(string root)
     {
         this.root = root;
+        configuration = BundledClasspath(root);
         worker = new Thread(Work) { IsBackground = true, Name = "FarmerScala presentation compiler" };
         worker.Start();
     }
-    internal void Configure(string artifact)
+    private static string BundledClasspath(string root)
     {
-        string metadata = Path.Combine(Path.GetDirectoryName(artifact)!, "compiler-classpath.json");
-        if (!File.Exists(metadata))
-            return;
-        string next = File.ReadAllText(metadata);
-        lock (gate)
+        string prefix = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        string metadata = Path.Combine(root, "tools", "analysis", "editor-classpath.json");
+        var libraries = JArray.Parse(File.ReadAllText(metadata)).Values<string>().ToArray();
+        if (libraries.Length == 0 || libraries.Length > 128)
+            throw new InvalidDataException("Bundled editor classpath is empty or invalid.");
+        var paths = libraries.Select(relative =>
         {
-            if (configuration == next)
-                return;
-            configuration = next;
-            generation++;
-            Interlocked.Exchange(ref retryAfterTicks, 0);
-            cache.Clear();
-            pending.Clear();
-            jobs.Clear();
-        }
-        wake.Set();
+            if (string.IsNullOrWhiteSpace(relative) || Path.IsPathRooted(relative))
+                throw new InvalidDataException("Editor dependencies must use paths relative to the mod.");
+            string path = Path.GetFullPath(Path.Combine(root, relative));
+            if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+                !path.EndsWith(".jar", StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
+                throw new IOException("Bundled editor dependency is missing or outside the mod: " + relative);
+            return path;
+        }).Distinct(StringComparer.OrdinalIgnoreCase);
+        return new JArray(paths).ToString(Formatting.None);
     }
     private bool RequestResult(IReadOnlyDictionary<string, string> sources, string file, string op, int offset, out JObject value)
     {
@@ -273,7 +274,7 @@ internal sealed class CompilerAnalysisProvider : IScalaAnalysisProvider, IScalaE
                     {
                         ["op"] = "configure",
                         ["classpath"] = JArray.Parse(next),
-                        ["sdk"] = Path.Combine(root, "sdk"),
+                        ["sdk"] = SdkProfile.Resolve(root),
                         ["workspace"] = Path.Combine(BepInEx.Paths.CachePath, "FarmerScala", "analysis"),
                         ["librarySources"] = Path.Combine(root, "tools", "analysis", "sources")
                     });

@@ -330,7 +330,8 @@ internal sealed class ScalaLineNumberGutter : MonoBehaviour
         }
         if (root != null) { root.gameObject.SetActive(false); UnityEngine.Object.Destroy(root.gameObject); }
         root = null; panel = null; labels.Clear(); rows.Clear(); breakpoints.Clear();
-        if (window != null && window.gameObject.activeInHierarchy) UpdateSize.Invoke(window, null);
+        if (window != null && window.workspace != null && window.CodeInput != null &&
+            window.GetComponent<Window>() != null && window.gameObject.activeInHierarchy) UpdateSize.Invoke(window, null);
     }
     private void OnDisable() => Stop();
     private void OnDestroy() { Stop(); ScalaLineNumbers.Forget(this); }

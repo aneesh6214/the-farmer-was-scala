@@ -257,6 +257,19 @@ function Initialize-OfflineCompiler([string]$Sdk, [string]$Toolchain, [string]$C
     } finally { $process.Dispose() }
 }
 
+# Publish only portable target-library paths. User classes and successful runtime
+# artifacts must never be prerequisites for editor analysis.
+function Write-EditorClasspath([string]$Payload, [string]$Metadata) {
+    $prefix = (Get-Item -LiteralPath $Payload).FullName.TrimEnd('\') + '\'
+    $libraries = @(Get-Content -LiteralPath $Metadata -Raw | ConvertFrom-Json | Where-Object { [IO.Path]::GetExtension($_) -eq '.jar' } | ForEach-Object {
+        $checked = Assert-ChildPath $_ $Payload
+        if (!(Test-Path -LiteralPath $checked -PathType Leaf)) { throw ('Editor dependency is missing: ' + $checked) }
+        $checked.Substring($prefix.Length).Replace('\','/')
+    })
+    if (!$libraries.Count) { throw 'No Scala editor target libraries were prepared.' }
+    [IO.File]::WriteAllText((Join-Path $Payload 'tools/analysis/editor-classpath.json'), (ConvertTo-Json -InputObject $libraries -Compress), [Text.UTF8Encoding]::new($false))
+}
+
 # Assemble a self-contained runtime folder with the mod, SDK, tools, dependency caches, and licenses.
 function New-ModPayload([string]$Root, $Tools, [string]$Destination) {
     New-Item -ItemType Directory -Path $Destination -Force | Out-Null
@@ -320,7 +333,7 @@ function New-ModPayload([string]$Root, $Tools, [string]$Destination) {
 
 # Reject incomplete bundles before replacing any part of an existing installation.
 function Assert-Payload([string]$Payload) {
-    foreach ($file in @('FarmerScala.dll','Newtonsoft.Json.dll','runtime/dotnet.exe','toolchain/java/bin/java.exe','toolchain/sbt-launch-1.11.7.jar','tools/compiler/FarmerScala.Compiler.dll','tools/worker/FarmerScala.Worker.dll','tools/analysis/classpath.txt','sdk/game/api.scala','sdk/game/GameEnums.scala','assets/the-farmer-was-scala.mp4','assets/the-farmer-was-scala.jpg')) {
+    foreach ($file in @('FarmerScala.dll','Newtonsoft.Json.dll','runtime/dotnet.exe','toolchain/java/bin/java.exe','toolchain/sbt-launch-1.11.7.jar','tools/compiler/FarmerScala.Compiler.dll','tools/worker/FarmerScala.Worker.dll','tools/analysis/classpath.txt','tools/analysis/editor-classpath.json','sdk/game/api.scala','sdk/game/GameEnums.scala','assets/the-farmer-was-scala.mp4','assets/the-farmer-was-scala.jpg')) {
         if (!(Test-Path -LiteralPath (Join-Path $Payload $file) -PathType Leaf)) { throw "Incomplete mod payload: $file" }
     }
 }
@@ -427,9 +440,11 @@ function New-SourceBundle([string]$Root, [string]$GamePath) {
     Initialize-OfflineCompiler (Join-Path $Root 'sdk') $tools.Toolchain (Join-Path $Root 'src/Compiler/bin/Release/net10.0/FarmerScala.Compiler.dll') (Join-Path $tools.Toolchain 'dotnet-x64/dotnet.exe') (Join-Path $Root '.local/bootstrap') $log
     # Validate a fresh copy with dependency downloads disabled before it can be installed or packaged.
     $payload = New-ModPayload $Root $tools (Join-Path $Root ('.local/payloads/' + [Guid]::NewGuid().ToString('N') + '/FarmerScala'))
-    Assert-Payload $payload
     Write-Host 'Checking the prepared payload with network downloads disabled...'
-    Initialize-OfflineCompiler (Join-Path $payload 'sdk') (Join-Path $payload 'toolchain') (Join-Path $payload 'tools/compiler/FarmerScala.Compiler.dll') (Join-Path $payload 'runtime/dotnet.exe') (Join-Path $Root ('.local/offline-check/' + [Guid]::NewGuid().ToString('N'))) $log -Offline
+    $offlineWork = Join-Path $Root ('.local/offline-check/' + [Guid]::NewGuid().ToString('N'))
+    Initialize-OfflineCompiler (Join-Path $payload 'sdk') (Join-Path $payload 'toolchain') (Join-Path $payload 'tools/compiler/FarmerScala.Compiler.dll') (Join-Path $payload 'runtime/dotnet.exe') $offlineWork $log -Offline
+    Write-EditorClasspath $payload (Join-Path $offlineWork 'build/compiler-classpath.json')
+    Assert-Payload $payload
     return [PSCustomObject]@{ Payload = $payload; Loader = $tools.BepInEx; Pins = $pins }
 }
 

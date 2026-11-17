@@ -4,6 +4,20 @@ Coming Soon:
 - Specialized upgrade tree for Scala code with helpful usage tips.
 - Various themes and a theme customizer.
 
+## 1.1.0
+11/16/2026
+
+- **Game Compatibility:** Updated for the November base-game update.
+- **Mining DLC:** Added Scala APIs and editor support for The Miner Was Replaced. Mining support activates only when the DLC is installed.
+- **Execution:** Added optional `@main` entry points and allowed running programs to continue while unrelated files are edited.
+- **Documentation:** Fixed missing Scaladoc on inherited members and declarations with modifiers such as `override` and `private`.
+- **Completion:** Fixed suggestions for project files and modules in imports, and prioritized enum cases and relevant members over inherited utilities and operators.
+- **Formatting:** Ctrl+Alt+L now removes duplicate imports, combines matching imports, and organizes imported names.
+- **Editor:** Added matching-parenthesis highlighting. Editor features now initialize even when the project has never compiled successfully.
+- **Interface:** Matched menu button spacing to the native DLC controls and kept output startup status visible until execution begins.
+- **Save Reliability:** Fixed conflicts between automatic backups and Scala source/layout updates.
+- **Testing:** Added automated integration tests running the actual game headlessly.
+
 ## 1.0.1
 10/31/2026
 

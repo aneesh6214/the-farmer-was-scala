@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <GameRoot Condition="'$(GameRoot)' == ''">C:\Program Files (x86)\Steam\steamapps\common\The Farmer Was Replaced</GameRoot>
+    <ManagedDir>$(GameRoot)\TheFarmerWasReplaced_Data\Managed</ManagedDir>
+    <BepInExDir>$(MSBuildThisFileDirectory)..\..\.local\bepinex\5.4.23.6\BepInEx\core</BepInExDir>
+  </PropertyGroup>
+</Project>

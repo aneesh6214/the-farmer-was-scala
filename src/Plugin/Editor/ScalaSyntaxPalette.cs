@@ -3,6 +3,7 @@ namespace FarmerScala.Editor;
 /// <summary>All Scala source/hover syntax colors. Native window/search colors stay with the game theme.</summary>
 internal sealed class ScalaSyntaxPalette
 {
+    internal const string ParenthesisBackground = "#A0A8B04D";
     // Reference: IntelliJ IDEA's editor scheme named "Dark", normal color vision,
     // with the Scala plugin enabled and rainbow/collection highlighting disabled.
     // The values below are our palette: keyword/string/documentation hues are adjusted

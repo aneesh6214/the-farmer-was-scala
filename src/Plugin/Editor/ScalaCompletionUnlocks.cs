@@ -8,7 +8,7 @@ namespace FarmerScala.Editor;
 internal static class ScalaCompletionUnlocks
 {
     internal static Func<string, bool>? IsUnlocked;
-    internal static bool Allows(string key) => key != "leaderboard" && key != "leaderboard_run" &&
+    internal static bool Allows(string key) => key != "leaderboard" && key != "underground_leaderboard" && key != "leaderboard_run" &&
         (IsUnlocked == null || IsUnlocked(key));
     internal static List<string> Filter(IEnumerable<string> names, IReadOnlyDictionary<string, string> identities)
         => names.Where(name => !identities.TryGetValue(name, out var key) || Allows(key)).ToList();

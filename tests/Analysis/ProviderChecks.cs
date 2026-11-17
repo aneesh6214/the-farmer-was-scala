@@ -21,11 +21,15 @@ internal static class ProviderChecks
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, true);
         }
+        var targetLibraries = Newtonsoft.Json.Linq.JArray.Parse(File.ReadAllText(Path.Combine(install, "compiler-checks/build/compiler-classpath.json")))
+            .Values<string>().Where(p => p!.EndsWith(".jar", StringComparison.OrdinalIgnoreCase))
+            .Select(p => Path.GetRelativePath(install, p!).Replace('\\', '/')).ToArray();
+        File.WriteAllText(Path.Combine(analysis, "editor-classpath.json"), Newtonsoft.Json.JsonConvert.SerializeObject(targetLibraries));
+        check(targetLibraries.Length > 0 && targetLibraries.All(p => !Path.IsPathRooted(p)), "editor bootstrap uses portable library paths without compiled player classes");
         BepInEx.Paths.CachePath = Path.Combine(install, "analysis-provider-cache");
         using (var formatOnly = new CompilerAnalysisProvider(install))
         {
-            // No CompilerReady/configure call: syntax formatting must work even
-            // when the project has never compiled successfully.
+            // No build/configure call: all editor services initialize from bundled libraries.
             var snapshot = new Dictionary<string, string> { ["models.modeling"] = "val count=3\nquick_print(count)\n", ["broken"] = "val invalid = (\n" };
             var wait = Stopwatch.StartNew();
             AnalysisFormatResult formatted = new();
@@ -41,10 +45,17 @@ internal static class ProviderChecks
             }
             check(ready && formatted.Error == null && formatted.Source?.Contains("val count = 3", StringComparison.Ordinal) == true,
                 "formatting works before first successful build and despite another invalid module");
-            check(!formatOnly.TryDiagnostics(snapshot, out _), "syntax-only formatting does not fabricate a configured typechecker");
+            wait.Restart();
+            IReadOnlyList<AnalysisDiagnostic> coldIssues = Array.Empty<AnalysisDiagnostic>();
+            ready = false;
+            while (wait.Elapsed < TimeSpan.FromSeconds(20))
+            {
+                if (formatOnly.TryDiagnostics(snapshot, out coldIssues)) { ready = true; break; }
+                await Task.Delay(20);
+            }
+            check(ready && coldIssues.Any(i => i.File == "broken"), "type diagnostics work on a broken project before any successful compilation");
         }
         using var provider = new CompilerAnalysisProvider(install);
-        provider.Configure(Path.Combine(install, "compiler-checks/build/main.js"));
         var original = new Dictionary<string, string> { ["f0"] = "class Café:\n  def récolte(): Int = 1\nval café = Café()\ncafé.\n" };
         int Cursor(IReadOnlyDictionary<string, string> source) => source["f0"].Length - 1;
         var timer = Stopwatch.StartNew();

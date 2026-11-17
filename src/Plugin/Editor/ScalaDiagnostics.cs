@@ -149,7 +149,7 @@ internal static class ScalaDiagnostics
         state.Window.workspace.tooltip?.CloseTooltip();
         state.HoverGlyph = glyph;
         state.Popup.ShowError(error.Message, input.transform.TransformPoint(info.characterInfo[glyph].bottomLeft) + offset,
-            input.transform.TransformPoint(info.characterInfo[last].bottomRight) + offset);
+            input.transform.TransformPoint(info.characterInfo[last].bottomRight) + offset, state.Window.CodeInput.textViewport);
     }
 
     internal static bool HoveringError(CodeWindow window) => states.TryGetValue(window, out var state) && Hit(state, out _) != null;

@@ -234,6 +234,25 @@ try
         Check(cancelled && cancelTime.Elapsed < TimeSpan.FromSeconds(3), "Pure JS infinite loop did not observe closed-game cancellation");
     }
 
+    string startupArtifact = Artifact("startup", "__farmerAction('bootstrap_gate', '[]'); function runFarm(){ return 'null'; }");
+    using (var entered = new ManualResetEventSlim())
+    using (var release = new ManualResetEventSlim())
+    {
+        var startupGame = new MockGame(_ => { entered.Set(); if (!release.Wait(5000)) throw new TimeoutException("test startup gate"); return null; });
+        using var transport = new WorkerTransport("test-run", "0");
+        var accept = startupGame.Accept(); transport.Connect(startupGame.Port, "private-token"); await accept;
+        var running = Task.Run(() => new ScalaEngine(transport, startupArtifact, "main.scala").Run());
+        try
+        {
+            Check(entered.Wait(3000) && !startupGame.Started.Task.IsCompleted, "Worker must not announce execution during bundle initialization");
+        }
+        finally { release.Set(); }
+        await startupGame.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await running.WaitAsync(TimeSpan.FromSeconds(5));
+        Check(startupGame.Started.Task.IsCompletedSuccessfully, "Worker announces readiness before entering the player program");
+        startupGame.Close();
+    }
+
     string pauseArtifact = Artifact("pause", "function runFarm(){\n__farmerAction('harvest','[]');\nreturn 'null';\n}");
     File.WriteAllText(pauseArtifact + ".map", "{\"version\":3,\"sources\":[\"main.scala\"],\"mappings\":\";AAEA;AACA\"}");
     File.WriteAllText(Path.Combine(Path.GetDirectoryName(pauseArtifact)!, "sources.json"), "{\"prefixLines\":2,\"sources\":{\"main.scala\":\"harvest()\\n()\"}}");
@@ -466,6 +485,7 @@ sealed class MockGame
     private TcpClient? client;
     private StreamWriter? writer;
     public readonly List<JsonObject> Requests = new();
+    public readonly TaskCompletionSource<JsonObject> Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public readonly TaskCompletionSource<JsonObject> Event = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public int Port => ((IPEndPoint)listener.LocalEndpoint).Port;
     public MockGame(Func<JsonObject, JsonNode?>? action = null)
@@ -492,7 +512,8 @@ sealed class MockGame
                     var request = JsonNode.Parse(line)!.AsObject();
                     if ((string?)request["kind"] == "event")
                     {
-                        Event.TrySetResult(request);
+                        if ((string?)request["event"] == "started") Started.TrySetResult(request);
+                        else Event.TrySetResult(request);
                         continue;
                     }
                     Requests.Add(request);

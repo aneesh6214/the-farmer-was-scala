@@ -5,13 +5,15 @@ namespace HarmonyLib
     [AttributeUsage(AttributeTargets.Class)]
     public class HarmonyPatch : Attribute
     {
+        public HarmonyPatch() { }
         public HarmonyPatch(Type type, string name)
         {
         }
     }
     public static class AccessTools
     {
-        public static FieldInfo Field(Type type, string name) => type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+        public static FieldInfo Field(Type type, string name) => type.GetField(name, BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!;
+        public static Type? TypeByName(string name) => Assembly.GetExecutingAssembly().GetType(name);
     }
 }
 namespace UnityEngine
@@ -162,6 +164,7 @@ namespace FarmerScala.Editor
     {
         public static bool Native = true, Loading = true, Failed; public static MainSim? Active;
         public static bool BlocksNativeExecution => Native || Failed;
+        public static void BeforeLoad() { }
         public static bool IsLoadingScalaSave(MainSim main) => Native && Loading && !Failed && ReferenceEquals(main, Active) && ReferenceEquals(main, MainSim.Inst);
         public static bool IsResolvedScalaSave(MainSim main) => Native && !Loading && !Failed && ReferenceEquals(main, Active) && ReferenceEquals(main, MainSim.Inst);
     }

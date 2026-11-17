@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>netstandard2.1</TargetFramework><AssemblyName>FarmerScala.Integration.Driver</AssemblyName><ModAssembly Condition="'$(ModAssembly)' == ''">../../../src/Plugin/bin/Release/netstandard2.1/FarmerScala.dll</ModAssembly></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="BepInEx"><HintPath>$(BepInExDir)/BepInEx.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(BepInExDir)/0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Core"><HintPath>$(ManagedDir)/Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Utils"><HintPath>$(ManagedDir)/Utils.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine"><HintPath>$(ManagedDir)/UnityEngine.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(ManagedDir)/UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.UI"><HintPath>$(ManagedDir)/UnityEngine.UI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Unity.TextMeshPro"><HintPath>$(ManagedDir)/Unity.TextMeshPro.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="FarmerScala"><HintPath>$(ModAssembly)</HintPath><Private>false</Private></Reference>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>

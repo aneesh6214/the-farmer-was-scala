@@ -68,12 +68,13 @@ public static class EditorIntegration
     internal static bool IsLoadingScalaSave(MainSim main) => loading && ResolvedScalaSaveIdentity(main);
     internal static bool IsResolvedScalaSave(MainSim main) => !loading && ResolvedScalaSaveIdentity(main);
     internal static bool IsScalaWindow(CodeWindow window) => enabled && languageResolved && !loading && currentMainSim != null
-        && ReferenceEquals(window.workspace, currentMainSim.workspace);
+        && ReferenceEquals(window.workspace, currentMainSim.workspace) && window.GetComponentInParent<CodeExample>() == null;
     public static string ProjectDirectory => string.IsNullOrEmpty(saveDirectory) ? "" : SourceStore.ProjectRoot(saveDirectory);
     public static Action<CodeWindow>? StepRequested
     {
         get; set;
     }
+    public static Func<CodeWindow, bool>? IsInvolvedInRun { get; set; }
     public static Func<CodeWindow, bool>? PlayWhileRunning
     {
         get; set;
@@ -251,6 +252,16 @@ public static class EditorIntegration
         return store.Snapshot(saveDirectory, entry.fileName, buffers);
     }
 
+    internal static bool MatchesRun(IReadOnlyDictionary<string, string> revision, IEnumerable<string> involved)
+    {
+        if (currentMainSim == null || !SessionIdentityMatches()) return false;
+        foreach (string name in involved)
+            if (!revision.TryGetValue(name, out string source) ||
+                !currentMainSim.workspace.codeWindows.TryGetValue(name, out var window) || window.CodeInput.text != source)
+                return false;
+        return true;
+    }
+
     public static void BeginRun(CodeWindow entry)
     {
         foreach (var code in entry.workspace.codeWindows.Values)
@@ -343,7 +354,8 @@ public static class EditorIntegration
         }
         int startCharacter = CharacterAt(index);
         window.SetErrorMessage(message, startCharacter, CharacterAt(endIndex));
-        currentMainSim.workspace.MoveCameraTo(nativeWindow, alwaysMoveWindow: true, charIndex: startCharacter, inputField: window.CodeInput);
+        if (OptionHolder.GetString("focus errors", "enabled") == "enabled")
+            currentMainSim.workspace.MoveCameraTo(nativeWindow, alwaysMoveWindow: true, charIndex: startCharacter, inputField: window.CodeInput);
     }
 
     private static string ActiveSaveName() => OptionHolder.GetString("activeSave", "Save0");
@@ -863,6 +875,8 @@ public static class EditorIntegration
     {
         private static bool Prefix(CodeWindow __instance, ref Node __result)
         {
+            // Embedded documentation examples remain native Python, even in a Scala save.
+            if (__instance.GetComponentInParent<CodeExample>() != null) return true;
             if (ReadOnlyLibraryWindows.IsReadOnly(__instance))
             {
                 __result = null!;
@@ -897,41 +911,64 @@ public static class EditorIntegration
         private static bool Prefix(CodeWindow __instance) => StepPressed(__instance);
     }
 
-    [HarmonyPatch(typeof(Saver), nameof(Saver.SaveCode))]
+    // SaveAsync captures code and progress on Unity's thread before queuing IO.
+    // Scala sources stay in their sidecar project; the native writer must never
+    // copy the displayed Scala buffers into vanilla Python files.
+    [HarmonyPatch(typeof(Saver), "SaveAsync")]
     private static class SavePatch
     {
-        private static bool Prefix(MainSim mainSim) => SaveCode(mainSim);
+        private static bool Prefix(MainSim mainSim, bool saveProgress, ref bool saveCode,
+            ref System.Threading.Tasks.Task<bool> __result, out int __state)
+        {
+            __state = -1;
+            if (store == null)
+                return true;
+            try
+            {
+                EnsureCurrentSave();
+                if (!ReferenceEquals(mainSim, currentMainSim))
+                    throw new InvalidOperationException("Save belongs to another session.");
+                if (enabled && saveCode)
+                {
+                    SaveCurrent();
+                    if (saveProgress) __state = mainSim.SaveRevision;
+                    saveCode = false;
+                }
+                return true;
+            }
+            catch (Exception error)
+            {
+                ReportSaveFailure("Save was not written: " + error.Message);
+                __result = System.Threading.Tasks.Task.FromResult(false);
+                return false;
+            }
+        }
+        private static void Postfix(MainSim mainSim, int __state, ref System.Threading.Tasks.Task<bool> __result)
+        {
+            if (__state >= 0) __result = Finish(__result, mainSim, __state);
+        }
+        private static async System.Threading.Tasks.Task<bool> Finish(System.Threading.Tasks.Task<bool> write, MainSim main, int revision)
+        {
+            bool saved = await write;
+            if (saved && ReferenceEquals(main, currentMainSim) && SessionIdentityMatches()) main.MarkSaved(revision);
+            return saved;
+        }
     }
 
-    [HarmonyPatch(typeof(Saver), nameof(Saver.SaveProgress))]
-    private static class SaveProgressPatch
-    {
-        private static bool Prefix(MainSim mainSim) => SaveProgress(mainSim);
-    }
-
-    [HarmonyPatch(typeof(Saver), "WriteSaveGame")]
+    [HarmonyPatch(typeof(Saver), "CreateSaveGame")]
     private static class SaveLayoutPatch
     {
-        private static void Prefix(SaveGame sg, string savePath)
+        private static void Postfix(MainSim mainSim, SaveGame __result)
         {
-            if (!enabled || store == null || currentMainSim == null || loading || synchronizing)
+            if (!enabled || store == null || loading || synchronizing ||
+                !ReferenceEquals(mainSim, currentMainSim))
                 return;
-            if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetFullPath(savePath).TrimEnd('\\'), Path.GetFullPath(saveDirectory).TrimEnd('\\')))
-                return;
-            try
-            {
-                var vanilla = store.ReadManifest(saveDirectory).VanillaLayout;
-                if (vanilla != null)
-                    NativeWindowLayout.ApplyToNativeSave(sg, vanilla);
-            }
-            catch (Exception error) { log("Vanilla layout could not be preserved: " + error.Message); }
-            if (sourceWriteBlocked)
-                return;
-            try
-            {
-                store.SaveLayout(saveDirectory, true, CaptureCurrentLayout(currentMainSim.workspace, true));
-            }
-            catch (Exception error) { log("Scala layout was not saved: " + error.Message); }
+            EnsureCurrentSave();
+            var vanilla = store.ReadManifest(saveDirectory).VanillaLayout;
+            if (vanilla != null)
+                NativeWindowLayout.ApplyToNativeSave(__result, vanilla);
+            if (!sourceWriteBlocked)
+                store.SaveLayout(saveDirectory, true, CaptureCurrentLayout(mainSim.workspace, true));
         }
     }
 
@@ -976,7 +1013,7 @@ public static class EditorIntegration
         private static readonly FieldInfo PreviousText = AccessTools.Field(typeof(CodeWindow), "prevText");
         private static void Prefix(CodeWindow __instance, out bool __state)
         {
-            bool scala = enabled && !ReadOnlyLibraryWindows.IsReadOnly(__instance);
+            bool scala = enabled && __instance.GetComponentInParent<CodeExample>() == null && !ReadOnlyLibraryWindows.IsReadOnly(__instance);
             __state = false;
             if (scala && !__instance.CodeInput.readOnly && OptionHolder.GetString("tabs to spaces") == "enabled")
             {
@@ -993,7 +1030,7 @@ public static class EditorIntegration
             __state = scala;
             if (__state)
                 scalaTokenUpdateDepth++;
-            if (__state && !synchronizing && running() && (string?)PreviousText.GetValue(__instance) != __instance.CodeInput.text)
+            if (__state && !synchronizing && running() && IsInvolvedInRun?.Invoke(__instance) != false && (string?)PreviousText.GetValue(__instance) != __instance.CodeInput.text)
                 StopRun();
         }
         private static void Postfix(bool __result)

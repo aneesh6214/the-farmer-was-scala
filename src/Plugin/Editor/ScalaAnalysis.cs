@@ -21,7 +21,6 @@ internal static class ScalaAnalysis
     private static readonly Dictionary<string, SemanticColorSnapshot> displayColors = new Dictionary<string, SemanticColorSnapshot>(StringComparer.Ordinal);
     private static long version, paintedVersion;
     private static bool warned;
-    private static string installRoot = "";
     private sealed class Pending
     {
         public IReadOnlyDictionary<string, string> Sources = null!;
@@ -36,22 +35,11 @@ internal static class ScalaAnalysis
     public static void Initialize(string root)
     {
         Dispose();
-        installRoot = root;
         ScalaCompletionUnlocks.IsUnlocked = key => MainSim.Inst != null && MainSim.Inst.IsUnlocked(key);
-        // Formatting needs only the bundled parser, not a successful project
-        // build. The owned helper process still starts lazily on first request.
+        // Bundled target libraries configure all editor services independently
+        // of player-code compilation. The helper still starts lazily.
         if (File.Exists(Path.Combine(root, "tools", "analysis", "classpath.txt")))
             Provider = new CompilerAnalysisProvider(root);
-    }
-    internal static void CompilerReady(string artifact)
-    {
-        if (installRoot.Length == 0 || Provider != null && !(Provider is CompilerAnalysisProvider))
-            return;
-        if (!File.Exists(Path.Combine(installRoot, "tools", "analysis", "classpath.txt")))
-            return;
-        if (!(Provider is CompilerAnalysisProvider compiler))
-            Provider = compiler = new CompilerAnalysisProvider(installRoot);
-        compiler.Configure(artifact);
     }
     private static bool Capture(CodeWindow window)
     {
@@ -153,7 +141,7 @@ internal static class ScalaAnalysis
                 return;
             }
             if (Provider != null && Provider.TryComplete(sources, window.fileName, offset, out var provided))
-                callback(provided);
+                callback(ScalaModuleCompletion.Merge(provided, sources.Keys, sources[window.fileName], offset));
             else
             {
                 callback(model!.Complete(window.fileName, offset));
@@ -273,7 +261,7 @@ internal static class ScalaAnalysis
                 else if (pending.Complete != null && Provider != null && Provider.TryComplete(sources, pending.Window.fileName, pending.Offset, out var completion))
                 {
                     callbacks.RemoveAt(i);
-                    pending.Complete(completion);
+                    pending.Complete(ScalaModuleCompletion.Merge(completion, sources.Keys, sources[pending.Window.fileName], pending.Offset));
                 }
             }
             bool compilerUpdated = Provider is CompilerAnalysisProvider compiler && compiler.TakeUpdates();
